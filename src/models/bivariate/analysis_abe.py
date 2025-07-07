@@ -264,28 +264,91 @@ weeks_cal_mask = (times >= 1)  & (times <= 39)
 weeks_val_mask = (times >= 40) & (times <= 78)
 
 actual_weekly = weekly_actual.reindex(times, fill_value=0).to_numpy()
+xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
+xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
 
+# ------------------------------------------------------------------
+# Compute classical Pareto/NBD cumulative curve if missing
+# ------------------------------------------------------------------
+if "cum_pnbd_ml" not in globals():
+    # birth week of each customer (first purchase)
+    birth_week = (
+        cdnowElog.groupby("cust")["week"].min()
+        .reindex(cbs["cust"])
+        .to_numpy()
+    )
+    cum_pnbd_ml = np.zeros_like(times, dtype=float)
+    for t_idx, t in enumerate(times):
+        rel_t = np.clip(t - birth_week, 0, None)
+        exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
+        cum_pnbd_ml[t_idx] = exp_per_cust.sum()
+        
 # Weekly PNB (MLE) increments
-cum_pnbd_ml = np.zeros_like(times, dtype=float)
 inc_pnbd_weekly = np.empty_like(times, dtype=float)
 inc_pnbd_weekly[0] = cum_pnbd_ml[0]
 inc_pnbd_weekly[1:] = np.diff(cum_pnbd_ml)
 
-# def mape_aggregate(actual, pred):
-mapecum_val_pnbd = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
-mapecum_cal_pnbd = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
+# ------------------------------------------------------------------
+# Build HB weekly increment curve (Model M2) if missing
+# ------------------------------------------------------------------
+if "inc_hb_weekly" not in globals():
+    n_draws = len(xstar_m2_draws)
+    inc_hb_weekly = np.zeros_like(times, dtype=float)
+
+    for d in range(n_draws):
+        draws_per_chain = len(draws_m2["level_1"][0])
+        chain = d // draws_per_chain
+        idx   = d % draws_per_chain
+        lam_d = draws_m2["level_1"][chain][idx, :, 0]
+        mu_d  = draws_m2["level_1"][chain][idx, :, 1]
+        tau_d = draws_m2["level_1"][chain][idx, :, 2]
+
+        rng_d = np.random.default_rng(d)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= (birth_week + tau_d))
+            inc = rng_d.poisson(lam=lam_d * active)
+            inc_hb_weekly[t_idx] += inc.sum()
+
+    inc_hb_weekly /= n_draws  # average across posterior draws
+
+mapecum_val_pnbd  = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
+mapecum_cal_pnbd  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
 mapecum_pool_pnbd = mape_aggregate(actual_weekly, inc_pnbd_weekly)
 
+# Weekly posterior-predictive HB Bivariate M1 increments (simulate from draws)
+inc_hb1_weekly = np.zeros_like(times, dtype=float)
+n_draws_m1 = sum(chain.shape[0] for chain in draws_m1["level_1"])
+for chain_idx, chain in enumerate(draws_m1["level_1"]):
+    for idx in range(chain.shape[0]):
+        lam_d = chain[idx, :, 0]
+        mu_d  = chain[idx, :, 1]
+        tau_d = chain[idx, :, 2]
+        rng   = np.random.default_rng(chain_idx * chain.shape[0] + idx)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= birth_week + tau_d)
+            inc_hb1_weekly[t_idx] += rng.poisson(lam=lam_d * active).sum()
+inc_hb1_weekly /= n_draws_m1
 
-inc_hb_weekly = np.zeros_like(times, dtype=float)
-mapecum_val_m1 = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb_weekly[weeks_val_mask])
-mapecum_cal_m1 = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb_weekly[weeks_cal_mask])
-mapecum_pool_m1 = mape_aggregate(actual_weekly, inc_hb_weekly)
+mapecum_val_m1  = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb1_weekly[weeks_val_mask])
+mapecum_cal_m1  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb1_weekly[weeks_cal_mask])
+mapecum_pool_m1 = mape_aggregate(actual_weekly, inc_hb1_weekly)
 
-# HB M2 uses same weekly draw series
-mapecum_val_m2 = mapecum_val_m1
-mapecum_cal_m2 = mapecum_cal_m1
-mapecum_pool_m2 = mapecum_pool_m1
+# Weekly posterior-predictive HB Bivariate M2 increments
+inc_hb2_weekly = np.zeros_like(times, dtype=float)
+n_draws = sum(chain.shape[0] for chain in draws_m2["level_1"])
+for chain_idx, chain in enumerate(draws_m2["level_1"]):
+    for idx in range(chain.shape[0]):
+        lam_d = chain[idx, :, 0]
+        mu_d  = chain[idx, :, 1]
+        tau_d = chain[idx, :, 2]
+        rng   = np.random.default_rng(chain_idx * chain.shape[0] + idx)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= birth_week + tau_d)
+            inc_hb2_weekly[t_idx] += rng.poisson(lam=lam_d * active).sum()
+inc_hb2_weekly /= n_draws
+mapecum_val_m2  = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb2_weekly[weeks_val_mask])
+mapecum_cal_m2  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb2_weekly[weeks_cal_mask])
+mapecum_pool_m2 = mape_aggregate(actual_weekly, inc_hb2_weekly)
 
 # ------------------------------------------------------------------
 # --- assemble DataFrame ------------------------------------------
@@ -331,8 +394,6 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 # ------------------------------------------------------------------
 # %% 6. Construct Table 3: Estimation Results
 # -- 6. Construct Table 3: Estimation Results --
-# ------------------------------------------------------------------
-
 corr_m1 = extract_correlation(np.array(draws_m1["level_2"][0]))
 corr_m2 = extract_correlation(np.array(draws_m2["level_2"][0]))
 
