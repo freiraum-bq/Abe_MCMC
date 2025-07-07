@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
+from IPython.display import display
 
 # Add lifetimes ParetoNBDFitter for MLE baseline
 from lifetimes import ParetoNBDFitter
@@ -43,10 +44,20 @@ def _fmt(df: pd.DataFrame, dec: int) -> pd.DataFrame:
 save_figures_path = os.path.join(project_root, "outputs", "figures", "full_cdnow_both")
 # e.g plt.savefig(os.path.join(save_figures_path, "NAME.png"), dpi=300, bbox_inches='tight')
 
-# %% 2. Load estimated parameters and data
-# -- 2. Load estimated parameters and data --
+# %% 2. Load estimated parameters, data and set file path
+# -- 2. Load estimated parameters, data and set file path
+
 # Set up the directory for pickles
 pickles_dir = os.path.join(project_root, "outputs", "pickles")
+
+# Set Excel output path
+excel_path = os.path.join(project_root, "outputs", "excel", "x_comparison_four_models.xlsx")
+os.makedirs(os.path.dirname(excel_path), exist_ok=True)
+
+# Set folder to save Figures 
+figure_path = os.path.join(project_root, "outputs", "figures", "x_comparison_four_models")
+os.makedirs(figure_path, exist_ok=True)
+
 #-----------
 #------------------------------
 #-------------------------------------------------
@@ -55,32 +66,30 @@ pickles_dir = os.path.join(project_root, "outputs", "pickles")
 #------------------------------
 # Load Estimates
 # Bivariate
-with open(os.path.join(pickles_dir, "filtered_bivariate_M1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "rb") as f:
     bi_m1 = pickle.load(f)
-with open(os.path.join(pickles_dir, "filtered_bivariate_M2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "full_bi_m2.pkl"), "rb") as f:
     bi_m2 = pickle.load(f)
 
 # Trivariate
-with open(os.path.join(pickles_dir, "trivariate_M1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "full_tri_m1.pkl"), "rb") as f:
     tri_m1 = pickle.load(f)
-with open(os.path.join(pickles_dir, "trivariate_M2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "full_tri_m2.pkl"), "rb") as f:
     tri_m2 = pickle.load(f)
 
 # CBS data
-with open(os.path.join(pickles_dir, "cbs_filtered_bivariate_data.pkl"), "rb") as f:
-    cbs = pickle.load(f)
+cbs_path = os.path.join(project_root, "data", "processed", "cdnow_abeCBS.csv")
+cbs = pd.read_csv(cbs_path, dtype={"cust": str}, parse_dates=["first"])
 
-# -----------------
-# Remark: Do we also need something like `cbs_full_trivariate_data.pkl`??
-# -----------------
-
-# Elog data (1/10 CDNOW dataset)
-data_path = os.path.join(project_root, "data", "processed", "cdnowElog.csv")
+# Load Elog data
+data_path = os.path.join(project_root, "data", "raw", "cdnow_abeElog.csv")
 cdnowElog = pd.read_csv(data_path)
 # Convert date column to datetime
 cdnowElog["date"] = pd.to_datetime(cdnowElog["date"])
-# ----------------------------------------------------------------------------------------
-# 
+# ensure the same key type
+cdnowElog["cust"] = cdnowElog["cust"].astype(str)
+# -------------------------------------------------
+
 # %% 3. Descriptive statistics
 # -- 3. Descriptive statistics --
 table1_stats = pd.DataFrame(
@@ -122,19 +131,13 @@ print("Table 1. Descriptive Statistics for CDNOW dataset")
 print(table1_stats.round(2))
 display(table1_stats)
 
-
-# Set the path for the Excel file in the project root's 'excel' folder
-excel_path = os.path.join(project_root, "outputs", "excel", "full_summaries.xlsx")
-os.makedirs(os.path.dirname(excel_path), exist_ok=True)
-
 # Save the DataFrame to the Excel file
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
     table1_stats.to_excel(writer, sheet_name="Table_1_DescriptStats", index=True)
 
 
-
-# %% 4. Compute model fit Bivariate Models
-# -- 4. Compute model fit Bivariate Models --
+# %% 4. Posterior Summary
+# -- 4. Posterior Summary --
 
 # Function to summarize level 2 draws
 def summarize_level2(draws_level2: np.ndarray, param_names: list[str], decimals: int = 2) -> pd.DataFrame:
@@ -142,6 +145,7 @@ def summarize_level2(draws_level2: np.ndarray, param_names: list[str], decimals:
     summary = pd.DataFrame(quantiles.T, columns=["2.5%", "50%", "97.5%"], index=param_names)
     return summary.round(decimals)
 
+# BIVARIATE
 # Parameter names for Model 1 (M1): no covariates
 param_names_bi_m1 = [
     "log_lambda (intercept)",
@@ -165,14 +169,53 @@ param_names_bi_m2 = [
     "var_log_mu",
     "cov_log_lambda_mu"
 ]
+# TRIVARIATE 
+# Parameter names for Model 1 (M1): no covariates
+param_names_tri_m1 = [
+    "log_lambda (intercept)",
+    "log_mu (intercept)",
+    "log_eta (intercept)",
+    "var_log_lambda",
+    "var_log_mu",
+    "var_log_eta",
+    "cov_log_lambda_mu",
+    "cov_log_lambda_eta",
+    "cov_log_mu_eta"
+]
+
+# Parameter names for Model 2 (M2): with covariate "first.sales"
+param_names_tri_m2 = [
+    "log_lambda (intercept)",
+    "log_lambda (age)",
+    "log_lambda (gender)",
+    "log_mu (intercept)",
+    "log_mu (gender)",
+    "log_mu (age)",
+    "log_eta (intercept)",
+    "log_eta (gender)",
+    "log_eta (age)",
+    "var_log_lambda",
+    "var_log_mu",
+    "var_log_eta",
+    "cov_log_lambda_mu",
+    "cov_log_lambda_eta",
+    "cov_log_mu_eta"
+]
 
 # Compute summaries
 summary_bi_m1 = summarize_level2(bi_m1["level_2"][0], param_names=param_names_bi_m1)
 summary_bi_m2 = summarize_level2(bi_m2["level_2"][0], param_names=param_names_bi_m2)
 
+summary_tri_m1 = summarize_level2(tri_m1["level_2"][0], param_names=param_names_tri_m1)
+summary_tri_m2 = summarize_level2(tri_m2["level_2"][0], param_names=param_names_tri_m2)
+
+
 # Drop "MAE" row if present
 summary_bi_m1 = summary_bi_m1.drop(index="MAE", errors="ignore")
 summary_bi_m2 = summary_bi_m2.drop(index="MAE", errors="ignore")
+
+summary_tri_m1 = summary_tri_m1.drop(index="MAE", errors="ignore")
+summary_tri_m2 = summary_tri_m2.drop(index="MAE", errors="ignore")
 
 # Rename indices to match Table 3 from the paper
 summary_bi_m1.index = [
@@ -195,6 +238,34 @@ summary_bi_m2.index = [
     "sigma^2_μ = var[log μ]",
     "sigma_λ_μ = cov[log λ, log μ]"
 ] # type: ignore
+summary_tri_m1.index = [
+    "Purchase rate log(λ) - Intercept",
+    "Dropout rate log(μ) - Intercept",
+    "Spending log(η) - Intercept",
+    "sigma^2_λ = var[log λ]",
+    "sigma^2_μ = var[log μ]",
+    "sigma^2_η = var[log η]",
+    "sigma_λ_μ = cov[log λ, log μ]",
+    "sigma_λ_η = cov[log λ, log η]",
+    "sigma_μ_η = cov[log μ, log η]",
+] # type: ignore
+summary_tri_m2.index = [
+    "Purchase rate log(λ) - Intercept",
+    "Purchase rate log(λ) - Gender [1 = Male]",
+    "Purchase rate log(λ) - Age (scaled)",
+    "Dropout rate log(μ) - Intercept",
+    "Dropout rate log(μ) - Gender [1 = Male]",
+    "Dropout rate log(μ) - Age (scaled)",
+    "Spending log(η) - Intercept",
+    "Spending log(η) - Gender [1 = Male]",
+    "Spending log(η) - Age (scaled)",
+    "sigma^2_λ = var[log λ]",
+    "sigma^2_μ = var[log μ]",
+    "sigma^2_η = var[log η]",
+    "sigma_λ_μ = cov[log λ, log μ]",
+    "sigma_λ_η = cov[log λ, log η]",
+    "sigma_μ_η = cov[log μ, log η]",
+] # type: ignore
 
 # ------------------------------------------------------------------
 
@@ -207,29 +278,56 @@ def post_mean_mus(draws):
     all_draws = np.concatenate(draws["level_1"], axis=0)
     return all_draws[:, :, 1].mean(axis=0)
 
+def post_mean_etas(draws):
+    all_draws = np.concatenate(draws["level_1"], axis=0)
+    return all_draws[:, :, 2].mean(axis=0)
+
 # Closed-form expected x_star for validation
 t_star = 39.0
-mean_lambda_m1 = post_mean_lambdas(bi_m1)
-mean_mu_m1     = post_mean_mus(bi_m1)
-mean_lambda_m2 = post_mean_lambdas(bi_m2)
-mean_mu_m2     = post_mean_mus(bi_m2)
+mean_lambda_bi_m1 = post_mean_lambdas(bi_m1)
+mean_mu_bi_m1     = post_mean_mus(bi_m1)
+mean_lambda_bi_m2 = post_mean_lambdas(bi_m2)
+mean_mu_bi_m2     = post_mean_mus(bi_m2)
+mean_lambda_tri_m1 = post_mean_lambdas(tri_m1)
+mean_mu_tri_m1     = post_mean_mus(tri_m1)
+mean_lambda_tri_m2 = post_mean_lambdas(tri_m2)
+mean_mu_tri_m2     = post_mean_mus(tri_m2)
 
-cbs["xstar_m1_pred"] = (mean_lambda_m1/mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
-cbs["xstar_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
+
+cbs["xstar_bi_m1_pred"] = (mean_lambda_bi_m1/mean_mu_bi_m1) * (1 - np.exp(-mean_mu_bi_m1 * t_star))
+cbs["xstar_bi_m2_pred"] = (mean_lambda_bi_m2/mean_mu_bi_m2) * (1 - np.exp(-mean_mu_bi_m2 * t_star))
+cbs["xstar_tri_m1_pred"] = (mean_lambda_tri_m1/mean_mu_tri_m1) * (1 - np.exp(-mean_mu_tri_m1 * t_star))
+cbs["xstar_tri_m2_pred"] = (mean_lambda_tri_m2/mean_mu_tri_m2) * (1 - np.exp(-mean_mu_tri_m2 * t_star))
+
 
 # Compare MAE
-mae_bi_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_m1_pred"]))
-mae_bi_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_m2_pred"]))
+mae_bi_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_bi_m1_pred"]))
+mae_bi_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_bi_m2_pred"]))
+
+mae_tri_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_tri_m1_pred"]))
+mae_tri_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_tri_m2_pred"]))
 
 ## The MAE rows are no longer added to the summaries here
 
 # Display both
-print("Posterior Summary - Model M1 (no covariates):")
+print("Posterior Summary - Bivariate Model M1 (no covariates):")
 print(summary_bi_m1)
 
-# ------------------------------------------------------------------
-print("Posterior Summary - Model M2 (with covariates):")
+print("Posterior Summary - Bivariate Model M2 (with covariates):")
 print(summary_bi_m2)
+
+print("Posterior Summary - Trivariate Model M1 (no covariates):")
+print(summary_tri_m1)
+
+print("Posterior Summary - Trivariate Model M2 (with covariates):")
+print(summary_tri_m2)
+
+# Save posterior summaries to separate sheets in the Excel file
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+    summary_bi_m1.to_excel(writer, sheet_name="PostSummary_BI_M1")
+    summary_bi_m2.to_excel(writer, sheet_name="PostSummary_BI_M2")
+    summary_tri_m1.to_excel(writer, sheet_name="PostSummary_TRI_M1")
+    summary_tri_m2.to_excel(writer, sheet_name="PostSummary_TRI_M2")
 
 
 # %% 5. Construct Table 2: Model Fit Evaluation Bivariate Models
@@ -1010,4 +1108,4 @@ for idata, label in [
     plt.subplots_adjust(hspace=0.5)
     plt.show()
 
-# %%
+
