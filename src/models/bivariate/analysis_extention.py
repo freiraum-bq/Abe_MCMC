@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------
-# this script reproduces the analysis from Abe (2009)
+# this script reproduces the analysis from Abe (2009) | with three customer characteristics & on full dataset
 # ------------------------------------------------------------------
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
@@ -45,12 +45,13 @@ from src.models.utils.analysis_bi_helpers import (summarize_level2,
 from src.models.utils.analysis_bi_dynamic import build_bivariate_param_names_and_labels
 
 # %% 2. Load estimates and data 
+# -- 2. Load estimates and data --
 # ------------------------------------------------------------------
 # --- Load Pre-computed Results ---
 pickles_dir = os.path.join(project_root, "outputs", "pickles")
 
 # Set Excel output path
-excel_path = os.path.join(project_root, "outputs", "excel", "abe_replication.xlsx")
+excel_path = os.path.join(project_root, "outputs", "excel", "abe_extention.xlsx")
 os.makedirs(os.path.dirname(excel_path), exist_ok=True)
 
 # Load MCMC draws
@@ -73,6 +74,7 @@ cdnowElog["date"] = pd.to_datetime(cdnowElog["date"])
 # ensure the same key type
 cdnowElog["cust"] = cdnowElog["cust"].astype(str)
 
+# ------------------------------------------------------------------
 # %% 3. Descriptive Statistics
 # -- 3. Descriptive Statistics --
 # ------------------------------------------------------------------
@@ -130,14 +132,33 @@ display(table1_stats)
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
     table1_stats.to_excel(writer, sheet_name="Table 1")
 # ------------------------------------------------------------------
-# %%
 
-# Parameter names and labels for Model 1 (M1): no covariates
-param_names_m1, labels_m1 = build_bivariate_param_names_and_labels([])
+# %% 4. Compute metrics and predictions
+# -- 4. Compute metrics and predictions --
 
-# Parameter names and labels for Model 2 (M2): with covariates
-covariate_cols_m2 = ["first.sales", "age_scaled", "gender_binary"]
-param_names_m2, labels_m2 = build_bivariate_param_names_and_labels(covariate_cols_m2)
+# Parameter names for Model 1 (M1): no covariates
+param_names_m1 = [
+    "log_lambda (intercept)",
+    "log_mu (intercept)",
+    "var_log_lambda",
+    "var_log_mu",
+    "cov_log_lambda_mu"
+]
+
+# Parameter names for Model 2 (M2): with covariate "first.sales"
+param_names_m2 = [
+    "log_lambda (intercept)",
+    "log_lambda (first.sales)",
+    "log_lambda (age_scaled)",
+    "log_lambda (gender_binary)",
+    "log_mu (intercept)",
+    "log_mu (first.sales)",
+    "log_mu (age_scaled)",
+    "log_mu (gender_binary)",
+    "var_log_lambda",
+    "var_log_mu",
+    "cov_log_lambda_mu"
+]
 
 # Compute summaries
 summary_m1 = summarize_level2(draws_m1["level_2"][0], param_names=param_names_m1)
@@ -147,9 +168,27 @@ summary_m2 = summarize_level2(draws_m2["level_2"][0], param_names=param_names_m2
 summary_m1 = summary_m1.drop(index="MAE", errors="ignore")
 summary_m2 = summary_m2.drop(index="MAE", errors="ignore")
 
-# Rename indices to match Table 3 from the paper (now dynamic)
-summary_m1.index = labels_m1  # type: ignore
-summary_m2.index = labels_m2  # type: ignore
+# Rename indices to match Table 3 from the paper
+summary_m1.index = [
+    "Purchase rate log(λ) - Intercept",
+    "Dropout rate log(μ) - Intercept",
+    "sigma^2_λ = var[log λ]",
+    "sigma^2_μ = var[log μ]",
+    "sigma_λ_μ = cov[log λ, log μ]"
+] # type: ignore
+summary_m2.index = [
+    "Purchase rate log(λ) - Intercept",
+    "Purchase rate log(λ) - Initial amount ($ 10^-3)",
+    "Purchase rate log(λ) - Age (scaled)",
+    "Purchase rate log(λ) - Gender (M = 1, F = 0)",
+    "Dropout rate log(μ) - Intercept",
+    "Dropout rate log(μ) - Initial amount ($ 10^-3)",
+    "Dropout rate log(μ) - Age (scaled)",
+    "Dropout rate log(μ) - Gender (M = 1, F = 0)",
+    "sigma^2_λ = var[log λ]",
+    "sigma^2_μ = var[log μ]",
+    "sigma_λ_μ = cov[log λ, log μ]"
+] # type: ignore
 
 # ------------------------------------------------------------------
 # Closed-form expected x_star for validation
@@ -165,6 +204,8 @@ cbs["xstar_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t
 # Compare MAE
 mae_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_m1_pred"]))
 mae_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_m2_pred"]))
+
+## The MAE rows are no longer added to the summaries here
 
 # Display both
 print("Posterior Summary - Model M1 (no covariates):")
@@ -212,8 +253,6 @@ weekly_actual = (
     repeat_txns.groupby("week")["cust"].count()
     .reindex(range(1, max_week+1), fill_value = 0))
 
-cum_pnbd_ml = np.zeros_like(times, dtype=float)
-
 # ------------------------------------------------------------------
 # Table 2 – Model‑fit metrics
 # ------------------------------------------------------------------
@@ -247,27 +286,91 @@ weeks_cal_mask = (times >= 1)  & (times <= 39)
 weeks_val_mask = (times >= 40) & (times <= 78)
 
 actual_weekly = weekly_actual.reindex(times, fill_value=0).to_numpy()
+xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
+xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
 
+# ------------------------------------------------------------------
+# Compute classical Pareto/NBD cumulative curve if missing
+# ------------------------------------------------------------------
+if "cum_pnbd_ml" not in globals():
+    # birth week of each customer (first purchase)
+    birth_week = (
+        cdnowElog.groupby("cust")["week"].min()
+        .reindex(cbs["cust"])
+        .to_numpy()
+    )
+    cum_pnbd_ml = np.zeros_like(times, dtype=float)
+    for t_idx, t in enumerate(times):
+        rel_t = np.clip(t - birth_week, 0, None)
+        exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
+        cum_pnbd_ml[t_idx] = exp_per_cust.sum()
+        
 # Weekly PNB (MLE) increments
 inc_pnbd_weekly = np.empty_like(times, dtype=float)
 inc_pnbd_weekly[0] = cum_pnbd_ml[0]
 inc_pnbd_weekly[1:] = np.diff(cum_pnbd_ml)
 
-# def mape_aggregate(actual, pred):
-mapecum_val_pnbd = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
-mapecum_cal_pnbd = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
+# ------------------------------------------------------------------
+# Build HB weekly increment curve (Model M2) if missing
+# ------------------------------------------------------------------
+if "inc_hb_weekly" not in globals():
+    n_draws = len(xstar_m2_draws)
+    inc_hb_weekly = np.zeros_like(times, dtype=float)
+
+    for d in range(n_draws):
+        draws_per_chain = len(draws_m2["level_1"][0])
+        chain = d // draws_per_chain
+        idx   = d % draws_per_chain
+        lam_d = draws_m2["level_1"][chain][idx, :, 0]
+        mu_d  = draws_m2["level_1"][chain][idx, :, 1]
+        tau_d = draws_m2["level_1"][chain][idx, :, 2]
+
+        rng_d = np.random.default_rng(d)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= (birth_week + tau_d))
+            inc = rng_d.poisson(lam=lam_d * active)
+            inc_hb_weekly[t_idx] += inc.sum()
+
+    inc_hb_weekly /= n_draws  # average across posterior draws
+
+mapecum_val_pnbd  = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
+mapecum_cal_pnbd  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
 mapecum_pool_pnbd = mape_aggregate(actual_weekly, inc_pnbd_weekly)
 
+# Weekly posterior-predictive HB Bivariate M1 increments (simulate from draws)
+inc_hb1_weekly = np.zeros_like(times, dtype=float)
+n_draws_m1 = sum(chain.shape[0] for chain in draws_m1["level_1"])
+for chain_idx, chain in enumerate(draws_m1["level_1"]):
+    for idx in range(chain.shape[0]):
+        lam_d = chain[idx, :, 0]
+        mu_d  = chain[idx, :, 1]
+        tau_d = chain[idx, :, 2]
+        rng   = np.random.default_rng(chain_idx * chain.shape[0] + idx)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= birth_week + tau_d)
+            inc_hb1_weekly[t_idx] += rng.poisson(lam=lam_d * active).sum()
+inc_hb1_weekly /= n_draws_m1
 
-inc_hb_weekly = np.zeros_like(times, dtype=float)
-mapecum_val_m1 = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb_weekly[weeks_val_mask])
-mapecum_cal_m1 = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb_weekly[weeks_cal_mask])
-mapecum_pool_m1 = mape_aggregate(actual_weekly, inc_hb_weekly)
+mapecum_val_m1  = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb1_weekly[weeks_val_mask])
+mapecum_cal_m1  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb1_weekly[weeks_cal_mask])
+mapecum_pool_m1 = mape_aggregate(actual_weekly, inc_hb1_weekly)
 
-# HB M2 uses same weekly draw series
-mapecum_val_m2 = mapecum_val_m1
-mapecum_cal_m2 = mapecum_cal_m1
-mapecum_pool_m2 = mapecum_pool_m1
+# Weekly posterior-predictive HB Bivariate M2 increments
+inc_hb2_weekly = np.zeros_like(times, dtype=float)
+n_draws = sum(chain.shape[0] for chain in draws_m2["level_1"])
+for chain_idx, chain in enumerate(draws_m2["level_1"]):
+    for idx in range(chain.shape[0]):
+        lam_d = chain[idx, :, 0]
+        mu_d  = chain[idx, :, 1]
+        tau_d = chain[idx, :, 2]
+        rng   = np.random.default_rng(chain_idx * chain.shape[0] + idx)
+        for t_idx, t in enumerate(times):
+            active = (t > birth_week) & (t <= birth_week + tau_d)
+            inc_hb2_weekly[t_idx] += rng.poisson(lam=lam_d * active).sum()
+inc_hb2_weekly /= n_draws
+mapecum_val_m2  = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb2_weekly[weeks_val_mask])
+mapecum_cal_m2  = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb2_weekly[weeks_cal_mask])
+mapecum_pool_m2 = mape_aggregate(actual_weekly, inc_hb2_weekly)
 
 # ------------------------------------------------------------------
 # --- assemble DataFrame ------------------------------------------
@@ -294,7 +397,7 @@ metric_order = [
     "Disaggregate measure",
     "Correlation (Validation)", "Correlation (Calibration)", "",
     "MSE (Validation)",         "MSE (Calibration)",         "",
-    "Aggregate measure",        "Time-series MAPE (%)",
+    "Aggregate measure", "Time-series MAPE (%)",
     "MAPE (Validation)",        "MAPE (Calibration)",        "MAPE (Pooled)"
 ]
 table2 = table2.reindex(metric_order)
@@ -313,8 +416,6 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 # ------------------------------------------------------------------
 # %% 6. Construct Table 3: Estimation Results
 # -- 6. Construct Table 3: Estimation Results --
-# ------------------------------------------------------------------
-
 corr_m1 = extract_correlation(np.array(draws_m1["level_2"][0]))
 corr_m2 = extract_correlation(np.array(draws_m2["level_2"][0]))
 
@@ -335,17 +436,25 @@ loglik_row = pd.DataFrame({
     ("HB M1 (no covariates)", "2.5%"): [""],
     ("HB M1 (no covariates)", "50%"):  [round(ll_m1, 0)],
     ("HB M1 (no covariates)", "97.5%"): [""],
-    ("HB M2 (with 3 covariates)", "2.5%"): [""],
-    ("HB M2 (with 3 covariates)", "50%"):  [round(ll_m2, 0)],
-    ("HB M2 (with 3 covariates)", "97.5%"): [""],
+    ("HB M2 (with 3 covariate)", "2.5%"): [""],
+    ("HB M2 (with 3 covariate)", "50%"):  [round(ll_m2, 0)],
+    ("HB M2 (with 3 covariate)", "97.5%"): [""],
 }, index=["Marginal log-likelihood"])
 
 # Format summary into 2D (col=quantiles) with aligned indices
 summary_m1_cleaned = summary_m1.copy()
 summary_m2_cleaned = summary_m2.copy()
 
-# Align the summaries vertically using dynamic labels from the helper
-row_labels = labels_m2
+# Align the summaries vertically with correct row structure
+row_labels = [
+    "Purchase rate log(λ) - Intercept",
+    "Purchase rate log(λ) - Initial amount ($ 10^-3)",
+    "Dropout rate log(μ) - Intercept",
+    "Dropout rate log(μ) - Initial amount ($ 10^-3)",
+    "sigma^2_λ = var[log λ]",
+    "sigma^2_μ = var[log μ]",
+    "sigma_λ_μ = cov[log λ, log μ]"
+]
 
 # Create placeholder rows for missing M1 covariates
 m1_fill = pd.DataFrame(index=row_labels, columns=["2.5%", "50%", "97.5%"])
@@ -359,7 +468,7 @@ for idx in summary_m2_cleaned.index:
 # Concatenate horizontally for final Table 3 view
 table3_combined = pd.concat([m1_fill, m2_fill], axis=1)
 table3_combined.columns = pd.MultiIndex.from_product(
-    [["HB M1 (no covariates)", "HB M2 (with 3 covariates)"], ["2.5%", "50%", "97.5%"]]
+    [["HB M1 (no covariates)", "HB M2 (with a covariate)"], ["2.5%", "50%", "97.5%"]]
 )
 
 # Append the correlation row and loglik row to Table 3
@@ -378,6 +487,8 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 # Generate posterior predictive draws for validation period
 xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
 xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
+
+
 
 table4 = compute_table4(draws_m2, xstar_m2_draws)
 
@@ -434,20 +545,6 @@ for d in range(n_draws):
 # average across draws and take cumulative
 inc_hb_weekly /= n_draws
 cum_hb = np.cumsum(inc_hb_weekly)
-
-# --- DEBUG PRINTS FOR FIGURE 2 ---
-print("\n[DEBUG] Figure 2 Data Preview:")
-print("cum_actual:", cum_actual[:10])
-print("cum_pnbd_ml:", cum_pnbd_ml[:10])
-print("cum_hb:", cum_hb[:10])
-print("times:", times[:10])
-print("Lengths:")
-print("  cum_actual:", len(cum_actual))
-print("  cum_pnbd_ml:", len(cum_pnbd_ml))
-print("  cum_hb:", len(cum_hb))
-print("  times:", len(times))
-
-# --- END DEBUG PRINTS ---
 
 plt.figure(figsize=(8,5))
 plt.plot(times, cum_actual, '-', color='tab:blue', linewidth=2, label="Actual")
@@ -506,6 +603,7 @@ plt.title("Figure 3: Conditional Expectation of Future Transactions for CDNOW Da
 plt.legend()
 plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Figure3_conditional_expectation.png"), dpi=300, bbox_inches='tight')
 plt.show()
+
 # -------------------------------------------------------------------
 # Figure 4: Scatter plot of posterior means of λ and μ  (HB‑M1, paper style)
 # -------------------------------------------------------------------
@@ -635,13 +733,31 @@ plt.show()
 # Convert M1 to InferenceData
 idata_m1 = az.from_dict(
     posterior={"level_2": np.array(draws_m1["level_2"])},  # shape: (chains, draws, dims)
-    coords={"param": param_names_m1},
+    coords={"param": [  # labels for better plots
+        "log_lambda (intercept)", 
+        "log_mu (intercept)", 
+        "var_log_lambda", 
+        "cov_log_lambda_mu", 
+        "var_log_mu"
+    ]},
     dims={"level_2": ["param"]}
 )
 # Convert M2 to InferenceData
 idata_m2 = az.from_dict(
     posterior={"level_2": np.array(draws_m2["level_2"])},
-    coords={"param": param_names_m2},
+    coords={"param": [
+    "log_lambda (intercept)",
+    "log_lambda (first.sales)",
+    "log_lambda (age_scaled)",
+    "log_lambda (gender_binary)",
+    "log_mu (intercept)",
+    "log_mu (first.sales)",
+    "log_mu (age_scaled)",
+    "log_mu (gender_binary)",
+    "var_log_lambda",
+    "var_log_mu",
+    "cov_log_lambda_mu"
+    ]},
     dims={"level_2": ["param"]}
 )
 
@@ -709,3 +825,4 @@ plt.suptitle("Posterior Distributions - M2", fontsize=16, y=1.02)
 plt.subplots_adjust(hspace=0.5)
 plt.show()
 # -------------------------------------------------------------------
+# %%
