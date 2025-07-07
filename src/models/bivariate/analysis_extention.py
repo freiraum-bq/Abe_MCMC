@@ -44,8 +44,8 @@ from src.models.utils.analysis_bi_helpers import (summarize_level2,
                                                   compute_table4)
 from src.models.utils.analysis_bi_dynamic import build_bivariate_param_names_and_labels
 
-# %% 2. Load estimates and data 
-# -- 2. Load estimates and data --
+# %% 2. Load estimates, data and set path
+# -- 2. Load estimates, data and set path
 # ------------------------------------------------------------------
 # --- Load Pre-computed Results ---
 pickles_dir = os.path.join(project_root, "outputs", "pickles")
@@ -53,6 +53,10 @@ pickles_dir = os.path.join(project_root, "outputs", "pickles")
 # Set Excel output path
 excel_path = os.path.join(project_root, "outputs", "excel", "abe_extention.xlsx")
 os.makedirs(os.path.dirname(excel_path), exist_ok=True)
+
+# Set folder to save Figures 
+figure_path = os.path.join(project_root, "outputs", "figures", "full_extention")
+os.makedirs(figure_path, exist_ok=True)   # create the folder if it doesn’t exist
 
 # Load MCMC draws
 with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "rb") as f:
@@ -488,8 +492,6 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
 xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
 
-
-
 table4 = compute_table4(draws_m2, xstar_m2_draws)
 
 # Show Table 4 exactly as rounded inside `compute_table4`
@@ -555,7 +557,7 @@ plt.xlabel("Week")
 plt.ylabel("Cumulative repeat transactions")
 plt.title("Figure 2: Weekly Time-Series Tracking for CDNOW Data")
 plt.legend()
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Figure2_weekly_tracking.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(figure_path, "Figure2_bi_weekly_tracking.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
 # -------------------------------------------------------------------
@@ -601,7 +603,7 @@ plt.xlabel("Number of transactions in weeks 1–39")
 plt.ylabel("Average transactions in weeks 40–78")
 plt.title("Figure 3: Conditional Expectation of Future Transactions for CDNOW Data")
 plt.legend()
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Figure3_conditional_expectation.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(figure_path, "Figure3_bi_conditional_expectation.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
 # -------------------------------------------------------------------
@@ -617,8 +619,7 @@ plt.ylim(0, 0.14)
 plt.xlabel(r"$\lambda$")
 plt.ylabel(r"$\mu$")
 plt.title("Figure 4: Scatter Plot of Posterior Means of λ and μ for CDNOW Data")
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Figure4_scatter_lambda_mu.png"),
-            dpi=300, bbox_inches="tight")
+plt.savefig(os.path.join(figure_path, "Figure4_bi_scatter_lambda_mu.png"), dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
 # Figure 5: Histogram of correlation between log(λ) and log(μ)
@@ -642,7 +643,7 @@ plt.xlim(-0.3, 0.4)
 plt.xlabel("Correlation")
 plt.ylabel("Frequency")
 plt.title("Figure 5: Distribution of Correlation Between log(λ) and log(μ) for CDNOW Data")
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Figure5_corr_histogram.png"),
+plt.savefig(os.path.join(figure_path, "Figure5_bi_corr_histogram.png"),
             dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
@@ -674,7 +675,7 @@ for ax in axes:
     ax.grid(False)
 
 plt.tight_layout()
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Scatter_M1_M2.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(figure_path, "Scatter_bi_M1_M2.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
 # -------------------------------------------------------------------
@@ -725,7 +726,7 @@ ax.tick_params(axis='x', colors='#444444')
 
 # Final layout adjustment
 plt.tight_layout()
-plt.savefig(os.path.join(project_root, "outputs", "figures", "full_extention", "Alive_vs_Churned.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(figure_path, "Alive_vs_Churned_bi.png"), dpi=300, bbox_inches='tight')
 plt.show()
 # -------------------------------------------------------------------
 # 8. Visualize the posterior distributions and traceplots for both models
@@ -825,4 +826,3 @@ plt.suptitle("Posterior Distributions - M2", fontsize=16, y=1.02)
 plt.subplots_adjust(hspace=0.5)
 plt.show()
 # -------------------------------------------------------------------
-# %%
