@@ -194,8 +194,10 @@ summary_m2.index = [
     "sigma_λ_μ = cov[log λ, log μ]"
 ] # type: ignore
 
+# %% 5. Construct Table 2: Model Fit Evaluation
+# -- 5. Construct Table 2: Model Fit Evaluation --
 # ------------------------------------------------------------------
-# Closed-form expected x_star for validation
+# ------ Some prerequisites ------
 t_star = 39.0
 mean_lambda_m1 = post_mean_lambdas(draws_m1)
 mean_mu_m1     = post_mean_mus(draws_m1)
@@ -217,11 +219,6 @@ print(summary_m1)
 
 print("Posterior Summary - Model M2 (with covariates):")
 print(summary_m2)
-# ------------------------------------------------------------------
-# %% 5. Construct Table 2: Model Fit Evaluation
-# -- 5. Construct Table 2: Model Fit Evaluation --
-# ------------------------------------------------------------------
-# ------ Some prerequisites ------
 
 # Prepare weekly index and counts
 first_date = cdnowElog["date"].min()

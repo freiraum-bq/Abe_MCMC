@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
+import xarray as xr
+import arviz as az
 from IPython.display import display
 
 # Add lifetimes ParetoNBDFitter for MLE baseline
@@ -30,6 +32,15 @@ while not os.path.isdir(os.path.join(cwd, 'src')):
 project_root = cwd
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+from src.models.bivariate.mcmc import draw_future_transactions
+from src.models.utils.analysis_bi_helpers import (summarize_level2, 
+                                                  post_mean_lambdas, 
+                                                  post_mean_mus, 
+                                                  mape_aggregate, 
+                                                  extract_correlation, 
+                                                  chain_total_loglik, 
+                                                  compute_table4)
 
 # ---------------------------------------------------------------------
 # Helper: enforce uniform decimal display (e.g. 0.63, 2.57, …)
@@ -332,27 +343,19 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 
 # %% 5. Construct Table 2: Model Fit Evaluation Bivariate Models
 # -- 5. Construct Table 2: Model Fit Evaluation Bivariate Models --
-# ------------------------------------------------------------------
-# ------ Some prerequisites ------
+# -- 5. Construct Table 2: Model Fit Evaluation --
+# BI VARIATE MODEL
+mean_lambda_m1 = post_mean_lambdas(bi_m1)
+mean_mu_m1     = post_mean_mus(bi_m1)
+mean_lambda_m2 = post_mean_lambdas(bi_m2)
+mean_mu_m2     = post_mean_mus(bi_m2)
+
+cbs["xstar_m1_pred"] = (mean_lambda_m1/mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
+cbs["xstar_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
 
 # Prepare weekly index and counts
 first_date = cdnowElog["date"].min()
 cdnowElog["week"] = ((cdnowElog["date"] - first_date) // pd.Timedelta("7D")).astype(int) + 1
-
-# Fit classical Pareto/NBD by maximum likelihood
-pnbd_mle = ParetoNBDFitter(penalizer_coef=0.0)
-pnbd_mle.fit(
-    frequency=cbs["x"],
-    recency=cbs["t_x"],
-    T=cbs["T_cal"]
-)
-# Classical Pareto/NBD (MLE) expected future repeats for the next 39 weeks
-exp_xstar_m1 = pnbd_mle.conditional_expected_number_of_purchases_up_to_time(
-    t_star,
-    cbs["x"],
-    cbs["t_x"],
-    cbs["T_cal"]
-)
 
 # Set the time range for the analysis
 max_week = cdnowElog["week"].max()
@@ -369,340 +372,17 @@ weekly_actual = (
     repeat_txns.groupby("week")["cust"].count()
     .reindex(range(1, max_week+1), fill_value = 0))
 
-cum_pnbd_ml = np.zeros_like(times, dtype=float)
-
-# ------------------------------------------------------------------
-# Table 2 – Model‑fit metrics
-# ------------------------------------------------------------------
-# --- individual‑level correlation & MSE ---------------------------
-# Validation period (x_star)
-
-corr_val_pnbd = np.corrcoef(cbs["x_star"], exp_xstar_m1)[0, 1]
-mse_val_pnbd  = np.mean((cbs["x_star"] - exp_xstar_m1) ** 2)
-
-corr_val_m1 = np.corrcoef(cbs["x_star"], cbs["xstar_m1_pred"])[0, 1]
-mse_val_m1  = np.mean((cbs["x_star"] - cbs["xstar_m1_pred"]) ** 2)
-
-corr_val_m2 = np.corrcoef(cbs["x_star"], cbs["xstar_m2_pred"])[0, 1]
-mse_val_m2  = np.mean((cbs["x_star"] - cbs["xstar_m2_pred"]) ** 2)
-
-# Calibration period (x)
-# PNB baseline is x itself, so corr=1, mse=0 by definition
-corr_calib_pnbd = 1.0
-mse_calib_pnbd  = 0.0
-
-calib_pred_m1 = (mean_lambda_m1 / mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * cbs["T_cal"]))
-calib_pred_m2 = (mean_lambda_m2 / mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * cbs["T_cal"]))
-
-corr_calib_m1 = np.corrcoef(cbs["x"], calib_pred_m1)[0, 1]
-mse_calib_m1  = np.mean((cbs["x"] - calib_pred_m1) ** 2)
-corr_calib_m2 = np.corrcoef(cbs["x"], calib_pred_m2)[0, 1]
-mse_calib_m2  = np.mean((cbs["x"] - calib_pred_m2) ** 2)
-
- # Abe (2009): both windows are 39 weeks long – weeks 1‑39 vs. 40‑78
-weeks_cal_mask = (times >= 1)  & (times <= 39)
-weeks_val_mask = (times >= 40) & (times <= 78)
-
-actual_weekly = weekly_actual.reindex(times, fill_value=0).to_numpy()
-
-def mape_aggregate(actual, pred):
-    """
-    Abe (2009) time‑series MAPE:
-        (1/N) Σ_t |Ĉ(t) − C(t)|  divided by  C(T)   ×100.
-    This down‑weights early weeks (matching the paper’s numbers).
-    """
-    cum_a = np.cumsum(actual)
-    cum_p = np.cumsum(pred)
-    abs_error = np.abs(cum_p - cum_a)
-    return abs_error.mean() / cum_a[-1] * 100
-
-# Weekly PNB (MLE) increments
-inc_pnbd_weekly = np.empty_like(times, dtype=float)
-inc_pnbd_weekly[0] = cum_pnbd_ml[0]
-inc_pnbd_weekly[1:] = np.diff(cum_pnbd_ml)
-
-# def mape_aggregate(actual, pred):
-mapecum_val_pnbd = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
-mapecum_cal_pnbd = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
-mapecum_pool_pnbd = mape_aggregate(actual_weekly, inc_pnbd_weekly)
-
-
-
-# Compute hierarchical Bayesian RFM metrics
-def compute_metrics(draws: dict, label: str) -> dict[str, float]:
-    all_d = np.concatenate(draws["level_1"], axis=0)
-    lam = all_d[:, :, 0].mean(axis=0)
-    mu  = all_d[:, :, 1].mean(axis=0)
-    t_star = 39.0
-
-    # Individual-level repeat forecasts
-    xstar_pred = (lam / mu) * (1 - np.exp(-mu * t_star))
-    corr_val = np.corrcoef(cbs["x_star"], xstar_pred)[0, 1]
-    mse_val  = np.mean((cbs["x_star"] - xstar_pred) ** 2)
-
-    # Calibration forecasts
-    calib_pred = (lam / mu) * (1 - np.exp(-mu * cbs["T_cal"]))
-    corr_cal = np.corrcoef(cbs["x"], calib_pred)[0, 1]
-    mse_cal  = np.mean((cbs["x"] - calib_pred) ** 2)
-
-    # Time-series MAPE via closed-form increments
-    lam_over_mu = lam / mu
-    cum_expected = np.array([
-        np.sum(lam_over_mu * (1 - np.exp(-mu * t)))
-        for t in times
-    ])
-    inc_weekly = np.diff(np.concatenate(([0.0], cum_expected)))
-    actual = weekly_actual.to_numpy()
-    def _mape(a, p):
-        cum_a = np.cumsum(a)
-        cum_p = np.cumsum(p)
-        return np.abs(cum_p - cum_a).mean() / cum_a[-1] * 100
-    mape_val  = _mape(actual[weeks_val_mask], inc_weekly[weeks_val_mask])
-    mape_cal  = _mape(actual[weeks_cal_mask], inc_weekly[weeks_cal_mask])
-    mape_pool = _mape(actual, inc_weekly)
-
-    return {
-        "label":     label,
-        "corr_val":  corr_val,
-        "corr_cal":  corr_cal,
-        "mse_val":   mse_val,
-        "mse_cal":   mse_cal,
-        "mape_val":  mape_val,
-        "mape_cal":  mape_cal,
-        "mape_pool": mape_pool
-    }
-
-# Gather metrics
-stats_pnbd  = {
-    "label":     "Pareto/NBD",
-    "corr_val":  corr_val_pnbd,
-    "corr_cal":  corr_calib_pnbd,
-    "mse_val":   mse_val_pnbd,
-    "mse_cal":   mse_calib_pnbd,
-    "mape_val":  mapecum_val_pnbd,
-    "mape_cal":  mapecum_cal_pnbd,
-    "mape_pool": mapecum_pool_pnbd
-}
-stats_bi_m1 = compute_metrics(bi_m1,  "HB M1")
-stats_bi_m2 = compute_metrics(bi_m2,  "HB M2")
-
-# Rebuild Table 2 with correct metrics
-table2 = pd.DataFrame({
-    stats_pnbd["label"]: [
-        stats_pnbd[k] for k in [
-            "corr_val","corr_cal","mse_val","mse_cal","mape_val","mape_cal","mape_pool"
-        ]
-    ],
-    stats_bi_m1["label"]: [
-        stats_bi_m1[k] for k in [
-            "corr_val","corr_cal","mse_val","mse_cal","mape_val","mape_cal","mape_pool"
-        ]
-    ],
-    stats_bi_m2["label"]: [
-        stats_bi_m2[k] for k in [
-            "corr_val","corr_cal","mse_val","mse_cal","mape_val","mape_cal","mape_pool"
-        ]
-    ]
-}, index=[
-    "Correlation (Validation)", "Correlation (Calibration)",
-    "MSE (Validation)",         "MSE (Calibration)",
-    "MAPE (Validation)",        "MAPE (Calibration)", "MAPE (Pooled)"
-]).round(2)
-
-# Define row order for display, matching paper layout
-metric_order = [
-    "Disaggregate measure",
-    "Correlation (Validation)", "Correlation (Calibration)", "",
-    "MSE (Validation)",         "MSE (Calibration)",         "",
-    "Aggregate measure", "Time-series MAPE (%)",
-    "MAPE (Validation)",        "MAPE (Calibration)",        "MAPE (Pooled)"
-]
-# Reapply layout & display
-table2 = table2.reindex(metric_order)
-table2_formatted = table2.reset_index().rename(columns={"index": ""})
-table2_disp = _fmt(table2_formatted, 2)
-print("\nTable 2. Model Fit for CDNOW Data")
-display(table2_disp)
-
-# ------
-# ------ Some prerequisites ------
-
-# Prepare weekly index and counts
-first_date = cdnowElog["date"].min()
-cdnowElog["week"] = ((cdnowElog["date"] - first_date) // pd.Timedelta("7D")).astype(int) + 1
-
-# Fit classical Pareto/NBD by maximum likelihood
-pnbd_mle = ParetoNBDFitter(penalizer_coef=0.0)
-pnbd_mle.fit(
-    frequency=cbs["x"],
-    recency=cbs["t_x"],
-    T=cbs["T_cal"]
-)
-# Classical Pareto/NBD (MLE) expected future repeats for the next 39 weeks
-exp_xstar_m1 = pnbd_mle.conditional_expected_number_of_purchases_up_to_time(
-    t_star,
-    cbs["x"],
-    cbs["t_x"],
-    cbs["T_cal"]
-)
-
-# Set the time range for the analysis
-max_week = cdnowElog["week"].max()
-
-times = np.arange(1, max_week + 1)
-
-# Sort the data by customer and week
-cdnowElog_sorted = cdnowElog.sort_values(by=["cust","week"])
-cdnowElog_sorted["txn_order"] = cdnowElog_sorted.groupby("cust").cumcount()
-
-repeat_txns = cdnowElog_sorted[cdnowElog_sorted["txn_order"] >= 1]
-
-weekly_actual = (
-    repeat_txns.groupby("week")["cust"].count()
-    .reindex(range(1, max_week+1), fill_value = 0))
-
-cum_pnbd_ml = np.zeros_like(times, dtype=float)
-
-# ------------------------------------------------------------------
-# Table 2 – Model‑fit metrics
-# ------------------------------------------------------------------
-# --- individual‑level correlation & MSE ---------------------------
-# Validation period (x_star)
-
-corr_val_pnbd = np.corrcoef(cbs["x_star"], exp_xstar_m1)[0, 1]
-mse_val_pnbd  = np.mean((cbs["x_star"] - exp_xstar_m1) ** 2)
-
-corr_val_m1 = np.corrcoef(cbs["x_star"], cbs["xstar_m1_pred"])[0, 1]
-mse_val_m1  = np.mean((cbs["x_star"] - cbs["xstar_m1_pred"]) ** 2)
-
-corr_val_m2 = np.corrcoef(cbs["x_star"], cbs["xstar_m2_pred"])[0, 1]
-mse_val_m2  = np.mean((cbs["x_star"] - cbs["xstar_m2_pred"]) ** 2)
-
-# Calibration period (x)
-# PNB baseline is x itself, so corr=1, mse=0 by definition
-corr_calib_pnbd = 1.0
-mse_calib_pnbd  = 0.0
-
-calib_pred_m1 = (mean_lambda_m1 / mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * cbs["T_cal"]))
-calib_pred_m2 = (mean_lambda_m2 / mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * cbs["T_cal"]))
-
-corr_calib_m1 = np.corrcoef(cbs["x"], calib_pred_m1)[0, 1]
-mse_calib_m1  = np.mean((cbs["x"] - calib_pred_m1) ** 2)
-corr_calib_m2 = np.corrcoef(cbs["x"], calib_pred_m2)[0, 1]
-mse_calib_m2  = np.mean((cbs["x"] - calib_pred_m2) ** 2)
-
- # Abe (2009): both windows are 39 weeks long – weeks 1‑39 vs. 40‑78
-weeks_cal_mask = (times >= 1)  & (times <= 39)
-weeks_val_mask = (times >= 40) & (times <= 78)
-
-actual_weekly = weekly_actual.reindex(times, fill_value=0).to_numpy()
-
-def mape_aggregate(actual, pred):
-    """
-    Abe (2009) time‑series MAPE:
-        (1/N) Σ_t |Ĉ(t) − C(t)|  divided by  C(T)   ×100.
-    This down‑weights early weeks (matching the paper’s numbers).
-    """
-    cum_a = np.cumsum(actual)
-    cum_p = np.cumsum(pred)
-    abs_error = np.abs(cum_p - cum_a)
-    return abs_error.mean() / cum_a[-1] * 100
-
-# Weekly PNB (MLE) increments
-inc_pnbd_weekly = np.empty_like(times, dtype=float)
-inc_pnbd_weekly[0] = cum_pnbd_ml[0]
-inc_pnbd_weekly[1:] = np.diff(cum_pnbd_ml)
-
-# def mape_aggregate(actual, pred):
-mapecum_val_pnbd = mape_aggregate(actual_weekly[weeks_val_mask], inc_pnbd_weekly[weeks_val_mask])
-mapecum_cal_pnbd = mape_aggregate(actual_weekly[weeks_cal_mask], inc_pnbd_weekly[weeks_cal_mask])
-mapecum_pool_pnbd = mape_aggregate(actual_weekly, inc_pnbd_weekly)
-
-
-inc_hb_weekly = np.zeros_like(times, dtype=float)
-mapecum_val_m1 = mape_aggregate(actual_weekly[weeks_val_mask], inc_hb_weekly[weeks_val_mask])
-mapecum_cal_m1 = mape_aggregate(actual_weekly[weeks_cal_mask], inc_hb_weekly[weeks_cal_mask])
-mapecum_pool_m1 = mape_aggregate(actual_weekly, inc_hb_weekly)
-
-# HB M2 uses same weekly draw series
-mapecum_val_m2 = mapecum_val_m1
-mapecum_cal_m2 = mapecum_cal_m1
-mapecum_pool_m2 = mapecum_pool_m1
-
-# ------------------------------------------------------------------
-# --- assemble DataFrame ------------------------------------------
-# ------------------------------------------------------------------
-
-table2 = pd.DataFrame({
-    "Pareto/NBD": [corr_val_pnbd, corr_calib_pnbd,
-                   mse_val_pnbd,  mse_calib_pnbd,
-                   mapecum_val_pnbd, mapecum_cal_pnbd, mapecum_pool_pnbd],
-    "HB M1":      [corr_val_m1,   corr_calib_m1,
-                   mse_val_m1,    mse_calib_m1,
-                   mapecum_val_m1,   mapecum_cal_m1,  mapecum_pool_m1],
-    "HB M2":      [corr_val_m2,   corr_calib_m2,
-                   mse_val_m2,    mse_calib_m2,
-                   mapecum_val_m2,   mapecum_cal_m2,  mapecum_pool_m2],
-}, index=[
-    "Correlation (Validation)", "Correlation (Calibration)",
-    "MSE (Validation)",         "MSE (Calibration)",
-    "MAPE (Validation)",        "MAPE (Calibration)", "MAPE (Pooled)"
-]).round(2)
-
-# ---- re‑format Table 2 rows to match paper layout --------------------------
-metric_order = [
-    "Disaggregate measure",
-    "Correlation (Validation)", "Correlation (Calibration)", "",
-    "MSE (Validation)",         "MSE (Calibration)",         "",
-    "Aggregate measure", "Time-series MAPE (%)",
-    "MAPE (Validation)",        "MAPE (Calibration)",        "MAPE (Pooled)"
-]
-table2 = table2.reindex(metric_order)
-
-# Convert index into a column so the left‑most column shows the metric label
-table2_formatted = table2.reset_index().rename(columns={"index": ""})
-
-# ---- non‑coloured Table 2 display and save -------------------------------
-table2_disp = _fmt(table2_formatted, 2)
-print("\nTable 2. Model Fit for CDNOW Data")
-display(table2_disp)
-
-# Save to Excel
-with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-    table2_formatted.to_excel(writer, sheet_name="Table 2", index=False, float_format="%.2f")
-# %% 6. Construct Table 2: Model Fit Evaluation Trivariate Models
-# -- 6. Construct Table 2: Model Fit Evaluation Trivariate Models --
-# ----------------------------------------------------------------------
-# -----------------------------------------------------------------------
-# Build helper arrays (weeks, masks, birth_week) – run once ----------
 # -----------------------------------------------------------------------
 
+# TRI VARIATE MODEL
 cbs_df = cbs
-
-
-first_date = cdnowElog["date"].min()
-cdnowElog["week"] = ((cdnowElog["date"] - first_date)
-                     // pd.Timedelta("7D")).astype(int) + 1
-max_week = cdnowElog["week"].max()
-
-elog_sorted = cdnowElog.sort_values(["cust", "week"])
-elog_sorted["txn_order"] = elog_sorted.groupby("cust").cumcount()
-repeat_txns = elog_sorted[elog_sorted["txn_order"] >= 1]
-
-weekly_actual = (
-    repeat_txns.groupby("week")["cust"].count()
-               .reindex(range(1, max_week + 1), fill_value=0)
-)
-
-times = np.arange(1, max_week + 1)
 birth_week = (
     cdnowElog.groupby("cust")["week"].min()
-             .reindex(cbs_df["cust"])
-             .to_numpy()
+    .reindex(cbs["cust"])
+    .to_numpy()
 )
-
-weeks_cal_mask = (times >= 1)  & (times <= 39)   # calibration window
-weeks_val_mask = (times >= 40) & (times <= 78)   # validation window
+weeks_cal_mask = (times >= 1)  & (times <= 39)
+weeks_val_mask = (times >= 40) & (times <= 78)
 
 # -----------------------------------------------------------------------
 # 3) Metric helper ------------------------------------------------------
@@ -712,7 +392,12 @@ def compute_metrics(draws: dict, label: str) -> dict[str, float]:
     all_d = np.concatenate(draws["level_1"], axis=0)       # (D, N, 5)
     lam   = all_d[:, :, 0].mean(axis=0)
     mu    = all_d[:, :, 1].mean(axis=0)
-    z     = all_d[:, :, 3].mean(axis=0)                    # P(alive)
+    # Models with an explicit 'alive probability' store it at index 3.
+    # Bi‑variate models don’t have that parameter, so default to 1.
+    if all_d.shape[2] > 3:
+        z = all_d[:, :, 3].mean(axis=0)
+    else:
+        z = np.ones_like(lam)
 
     t_star = 39
     xstar_pred = z * (lam / mu) * (1 - np.exp(-mu * t_star))
@@ -727,6 +412,7 @@ def compute_metrics(draws: dict, label: str) -> dict[str, float]:
     # weekly posterior-mean increments
     inc_weekly = np.zeros_like(times, dtype=float)
     n_draws, draws_per_chain = all_d.shape[0], len(draws["level_1"][0])
+
 
     for d in range(n_draws):
         ch, idx = divmod(d, draws_per_chain)
@@ -760,21 +446,33 @@ def compute_metrics(draws: dict, label: str) -> dict[str, float]:
 
 # -----------------------------------------------------------------------
 # 4) Compute metrics for both models ------------------------------------
-stats_0 = compute_metrics(tri_m1,  "HB RFM (no cov)")
-stats_1 = compute_metrics(tri_m2, "HB RFM (+ gender & age)")
+stats_bi1  = compute_metrics(bi_m1,  "Bivariate HB-M1")
+stats_bi2  = compute_metrics(bi_m2,  "Bivariate HB-M2")
+stats_tri1 = compute_metrics(tri_m1, "Trivariate HB-M1")
+stats_tri2 = compute_metrics(tri_m2, "Trivariate HB-M2")
 
 # -----------------------------------------------------------------------
 # 5) Assemble two-column Table 2 ----------------------------------------
 table2 = pd.DataFrame({
-    stats_0["label"]: [
-        stats_0["corr_val"], stats_0["corr_cal"],
-        stats_0["mse_val"],  stats_0["mse_cal"],
-        stats_0["mape_val"], stats_0["mape_cal"], stats_0["mape_pool"]
+    stats_bi1["label"]: [
+        stats_bi1["corr_val"], stats_bi1["corr_cal"],
+        stats_bi1["mse_val"],  stats_bi1["mse_cal"],
+        stats_bi1["mape_val"], stats_bi1["mape_cal"], stats_bi1["mape_pool"]
     ],
-    stats_1["label"]: [
-        stats_1["corr_val"], stats_1["corr_cal"],
-        stats_1["mse_val"],  stats_1["mse_cal"],
-        stats_1["mape_val"], stats_1["mape_cal"], stats_1["mape_pool"]
+    stats_bi2["label"]: [
+        stats_bi2["corr_val"], stats_bi2["corr_cal"],
+        stats_bi2["mse_val"],  stats_bi2["mse_cal"],
+        stats_bi2["mape_val"], stats_bi2["mape_cal"], stats_bi2["mape_pool"]
+    ],
+    stats_tri1["label"]: [
+        stats_tri1["corr_val"], stats_tri1["corr_cal"],
+        stats_tri1["mse_val"],  stats_tri1["mse_cal"],
+        stats_tri1["mape_val"], stats_tri1["mape_cal"], stats_tri1["mape_pool"]
+    ],
+    stats_tri2["label"]: [
+        stats_tri2["corr_val"], stats_tri2["corr_cal"],
+        stats_tri2["mse_val"],  stats_tri2["mse_cal"],
+        stats_tri2["mape_val"], stats_tri2["mape_cal"], stats_tri2["mape_pool"]
     ]
 }, index=[
     "Correlation (Validation)", "Correlation (Calibration)",
@@ -791,10 +489,13 @@ row_order = [
 ]
 table2 = table2.reindex(row_order)
 
-# Print / display
-table2_disp = table2.reset_index().rename(columns={"index": ""})
-print("\nModel fit for Trivariate models")
+table2_disp = _fmt(table2.reset_index().rename(columns={"index": ""}), 2)
+print("\nModel Fit Metrics - Bivariate *and* Trivariate")
 display(table2_disp)
+
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+    table2_disp.to_excel(writer, sheet_name="ModelFit_Table", index=False, float_format="%.2f")
+
 
 # %% 7. Figure 2: Weekly-Series Tracking
 # -- 7. Figure 2: Weekly-Series Tracking --
@@ -804,12 +505,33 @@ display(table2_disp)
 # Cumulative actual transactions
 cum_actual = weekly_actual.cumsum()
 
-# Pareto/NBD (MLE) baseline
-cum_pnbd_ml = np.zeros_like(times, dtype=float)
-for t_idx, t in enumerate(times):
-    rel_t = np.clip(t - birth_week, 0, None)
-    exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
-    cum_pnbd_ml[t_idx] = exp_per_cust.sum()
+# Fit classical Pareto/NBD by maximum likelihood
+pnbd_mle = ParetoNBDFitter(penalizer_coef=0.0)
+pnbd_mle.fit(
+    frequency=cbs["x"],
+    recency=cbs["t_x"],
+    T=cbs["T_cal"]
+)
+# Classical Pareto/NBD (MLE) expected future repeats for the next 39 weeks
+exp_xstar_m1 = pnbd_mle.conditional_expected_number_of_purchases_up_to_time(
+    t_star,
+    cbs["x"],
+    cbs["t_x"],
+    cbs["T_cal"]
+)
+
+if "cum_pnbd_ml" not in globals():
+    # birth week of each customer (first purchase)
+    birth_week = (
+        cdnowElog.groupby("cust")["week"].min()
+        .reindex(cbs["cust"])
+        .to_numpy()
+    )
+    cum_pnbd_ml = np.zeros_like(times, dtype=float)
+    for t_idx, t in enumerate(times):
+        rel_t = np.clip(t - birth_week, 0, None)
+        exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
+        cum_pnbd_ml[t_idx] = exp_per_cust.sum()
 
 # Bivariate HB M1 and M2 closed-form cumulative forecasts
 lam_bi1 = mean_lambda_m1
@@ -960,17 +682,21 @@ sns.set(style="whitegrid")
 # Create a figure with two subplots
 fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
 
+cbs["xstar_bi_m1_pred"] = (mean_lambda_bi_m1/mean_mu_bi_m1) * (1 - np.exp(-mean_mu_bi_m1 * t_star))
+cbs["xstar_bi_m2_pred"] = (mean_lambda_bi_m2/mean_mu_bi_m2) * (1 - np.exp(-mean_mu_bi_m2 * t_star))
+
+
 # Scatterplot for Model M1
-axes[0].scatter(cbs["x_star"], cbs["xstar_m1_pred"], alpha=0.4, color="tab:blue")
+axes[0].scatter(cbs["x_star"], cbs["xstar_bi_m1_pred"], alpha=0.4, color="tab:blue")
 axes[0].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
 axes[0].set_title("M1: Without Covariates")
 axes[0].set_xlabel("Actual x_star")
 axes[0].set_ylabel("Predicted x_star")
 
 # Scatterplot for Model M2
-axes[1].scatter(cbs["x_star"], cbs["xstar_m2_pred"], alpha=0.4, color="tab:green")
+axes[1].scatter(cbs["x_star"], cbs["xstar_bi_m2_pred"], alpha=0.4, color="tab:green")
 axes[1].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
-axes[1].set_title("M2: With first.sales")
+axes[1].set_title("Bi_M2: With first.sales")
 axes[1].set_xlabel("Actual x_star")
 
 # Remove grid from both subplots
@@ -1034,8 +760,7 @@ plt.show()
 # -------------------------------------------------------------------
 # 9. MCMC Diagnostics for all four models
 # -------------------------------------------------------------------
-import arviz as az
-
+# %% Traceplots for Bi & Tri models
 # Convert Bivariate M1 to InferenceData
 idata_bi_m1 = az.from_dict(
     posterior={"level_2": np.array(bi_m1["level_2"])},
@@ -1063,6 +788,7 @@ idata_tri_m2 = az.from_dict(
     coords={"param": param_names_tri_m2},
     dims={"level_2": ["param"]}
 )
+
 
 # Traceplots
 for idata, label in [
@@ -1108,4 +834,110 @@ for idata, label in [
     plt.subplots_adjust(hspace=0.5)
     plt.show()
 
+# %% 10. BIVARIATE Convergence 
+# -- 10. BIVARIATE Convergence 
 
+def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
+    # ------------------------------------------------------------------
+    # 1) ensure NumPy array
+    # ------------------------------------------------------------------
+    lvl2 = np.asarray(draws["level_2"])    # list → ndarray
+    if lvl2.ndim == 2:                     # single chain: (draws, P)
+        lvl2 = lvl2[None, ...]             # → (1, draws, P)
+
+    chains, draws_n, P = lvl2.shape
+    # ------------------------------------------------------------------
+    # 2) build dynamic parameter names (unchanged below)
+    # ------------------------------------------------------------------
+    n_cov = max((P - 5) // 2, 0)
+    param_names = ["log_lambda (intercept)", "log_mu (intercept)"]
+    for i in range(n_cov):
+        param_names.extend([f"beta_lambda[{i}]", f"beta_mu[{i}]"])
+    param_names.extend(
+        ["var_log_lambda", "cov_log_lambda_mu", "var_log_mu"]
+    )
+
+    da = xr.DataArray(
+        lvl2,
+        dims=("chain", "draw", "param"),
+        coords={"param": param_names},
+    )
+
+    summary = az.summary(
+        az.from_dict(posterior={"level_2": da}),
+        var_names=["level_2"],
+        round_to=4,
+    )
+    summary.index = [f"level_2[{p}]" for p in param_names]
+    return summary
+
+summary_m1 = level2_summary(bi_m1, label="m1")
+print(summary_m1)
+
+if "draws_m2" in globals() and bi_m2 is not None:
+    summary_m2 = level2_summary(bi_m2, label="m2")
+    print("\n" + "-" * 60)
+    print(summary_m2)
+
+# Save convergence summaries to the Excel file
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
+    summary_m1.to_excel(writer, sheet_name="Bi_Convergence_M1", index=True)
+    if 'summary_m2' in locals():
+        summary_m2.to_excel(writer, sheet_name="Bi_Convergence_M2", index=True)
+
+
+# %% 11. TRIVARIATE Convergence
+# -- 11. TRIVARIATE Convergence
+
+def level2_summary_trivar(draws: dict, label: str = "M1") -> pd.DataFrame:
+    """
+    Return az.summary table (mean | sd | hdi_3% | … | r_hat) for the
+    3-intercept + 6 unique covariance parameters in the tri-variate model.
+
+    The function ignores any extra β rows that belong to covariates.
+    """
+    # Convert list of per-chain arrays into a single 3D array
+    lvl2 = np.stack(draws["level_2"], axis=0)
+    n_chain, n_draw, n_param = lvl2.shape
+
+    # keep first 3 rows (intercepts) and last 6 rows (Σ unique elements)
+    core = np.concatenate([lvl2[..., :3], lvl2[..., -6:]], axis=-1)  # (C, D, 9)
+
+    param_names = [
+        "log_lambda (intercept)",
+        "log_mu (intercept)",
+        "log_eta (intercept)",
+        "var_log_lambda",
+        "cov_log_lambda_mu",
+        "cov_log_lambda_eta",
+        "var_log_mu",
+        "cov_log_mu_eta",
+        "var_log_eta",
+    ]
+
+    da = xr.DataArray(
+        core,
+        dims=("chain", "draw", "param"),
+        coords={"param": param_names},
+    )
+
+    idata = az.from_dict(posterior={"level_2": da})
+    summary = az.summary(idata, var_names=["level_2"], round_to=4)
+
+    # make row labels identical to previous style
+    summary.index = [f"level_2[{p}]" for p in param_names]
+    return summary
+
+
+# ------- run for both models ---------------------------------------------
+summary_3pI  = level2_summary_trivar(tri_m1,  label="M1")
+summary_3pII = level2_summary_trivar(tri_m2, label="M2")
+
+print("\nArviZ level-2 summary – Model 1 (intercept only)")
+print(summary_3pI)
+print("\nArviZ level-2 summary – Model 2 (with covariates)")
+print(summary_3pII)
+
+# Save the DataFrame to the Excel file
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
+    table1_stats.to_excel(writer, sheet_name="Tri_Convergence", index=True)

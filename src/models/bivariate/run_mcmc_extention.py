@@ -68,7 +68,7 @@ draws_m1 = mcmc_draw_parameters(
     chains  =   4,
     seed    =   42,
     trace   =   1000,
-    n_mh_steps = 20,
+    n_mh_steps = 40,
 )
 m1_duration = time.time() - start_m1
 print(f"Model M1 runtime: {m1_duration:.2f} seconds")
@@ -92,7 +92,7 @@ draws_m2 = mcmc_draw_parameters(
     chains  =   4,
     seed    =   42,
     trace   =   1000,
-    n_mh_steps = 20,
+    n_mh_steps = 40,
 )
 m2_duration = time.time() - start_m2
 print(f"Model M2 runtime: {m2_duration:.2f} seconds")
