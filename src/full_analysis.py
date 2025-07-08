@@ -3,7 +3,6 @@
 # --------- the analysis on the full CDNOW dataset -----------------
 # ------- with both bivariate and trivariate models ----------------
 # ------------------------------------------------------------------
-
 # -----------------------------------------------------------------
 
 # %% 1. Import necessary libraries
@@ -52,8 +51,9 @@ def _fmt(df: pd.DataFrame, dec: int) -> pd.DataFrame:
 # ------------------------------------------------------------------
 
 # Path to save the figures:
-save_figures_path = os.path.join(project_root, "outputs", "figures", "full_cdnow_both")
-# e.g plt.savefig(os.path.join(save_figures_path, "NAME.png"), dpi=300, bbox_inches='tight')
+save_figures_path = os.path.join(project_root, "outputs", "figures", "x_comparison_four_models")
+
+# ---------------------------------------------------------------------
 
 # %% 2. Load estimated parameters, data and set file path
 # -- 2. Load estimated parameters, data and set file path
@@ -220,7 +220,6 @@ summary_bi_m2 = summarize_level2(bi_m2["level_2"][0], param_names=param_names_bi
 summary_tri_m1 = summarize_level2(tri_m1["level_2"][0], param_names=param_names_tri_m1)
 summary_tri_m2 = summarize_level2(tri_m2["level_2"][0], param_names=param_names_tri_m2)
 
-
 # Drop "MAE" row if present
 summary_bi_m1 = summary_bi_m1.drop(index="MAE", errors="ignore")
 summary_bi_m2 = summary_bi_m2.drop(index="MAE", errors="ignore")
@@ -304,12 +303,10 @@ mean_mu_tri_m1     = post_mean_mus(tri_m1)
 mean_lambda_tri_m2 = post_mean_lambdas(tri_m2)
 mean_mu_tri_m2     = post_mean_mus(tri_m2)
 
-
 cbs["xstar_bi_m1_pred"] = (mean_lambda_bi_m1/mean_mu_bi_m1) * (1 - np.exp(-mean_mu_bi_m1 * t_star))
 cbs["xstar_bi_m2_pred"] = (mean_lambda_bi_m2/mean_mu_bi_m2) * (1 - np.exp(-mean_mu_bi_m2 * t_star))
 cbs["xstar_tri_m1_pred"] = (mean_lambda_tri_m1/mean_mu_tri_m1) * (1 - np.exp(-mean_mu_tri_m1 * t_star))
 cbs["xstar_tri_m2_pred"] = (mean_lambda_tri_m2/mean_mu_tri_m2) * (1 - np.exp(-mean_mu_tri_m2 * t_star))
-
 
 # Compare MAE
 mae_bi_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_bi_m1_pred"]))
@@ -317,8 +314,6 @@ mae_bi_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_bi_m2_pred"]))
 
 mae_tri_m1 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_tri_m1_pred"]))
 mae_tri_m2 = np.mean(np.abs(cbs["x_star"] - cbs["xstar_tri_m2_pred"]))
-
-## The MAE rows are no longer added to the summaries here
 
 # Display both
 print("Posterior Summary - Bivariate Model M1 (no covariates):")
@@ -341,17 +336,17 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_tri_m2.to_excel(writer, sheet_name="PostSummary_TRI_M2")
 
 
-# %% 5. Construct Table 2: Model Fit Evaluation Bivariate Models
-# -- 5. Construct Table 2: Model Fit Evaluation Bivariate Models --
-# -- 5. Construct Table 2: Model Fit Evaluation --
+# %% 5. Model Fit Evaluation Bivariate Models
+# -- 5. Model Fit Evaluation Bivariate Models --
+# -- 5. Model Fit Evaluation --
 # BI VARIATE MODEL
 mean_lambda_m1 = post_mean_lambdas(bi_m1)
 mean_mu_m1     = post_mean_mus(bi_m1)
 mean_lambda_m2 = post_mean_lambdas(bi_m2)
 mean_mu_m2     = post_mean_mus(bi_m2)
 
-cbs["xstar_m1_pred"] = (mean_lambda_m1/mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
-cbs["xstar_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
+cbs["xstar_bi_m1_pred"] = (mean_lambda_m1/mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
+cbs["xstar_bi_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
 
 # Prepare weekly index and counts
 first_date = cdnowElog["date"].min()
@@ -412,7 +407,6 @@ def compute_metrics(draws: dict, label: str) -> dict[str, float]:
     # weekly posterior-mean increments
     inc_weekly = np.zeros_like(times, dtype=float)
     n_draws, draws_per_chain = all_d.shape[0], len(draws["level_1"][0])
-
 
     for d in range(n_draws):
         ch, idx = divmod(d, draws_per_chain)
@@ -495,12 +489,13 @@ display(table2_disp)
 
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table2_disp.to_excel(writer, sheet_name="ModelFit_Table", index=False, float_format="%.2f")
+# ------------------------------------------------------------------
 
 
-# %% 7. Figure 2: Weekly-Series Tracking
-# -- 7. Figure 2: Weekly-Series Tracking --
+# %% 7. Weekly-Series Tracking
+# -- 7. Weekly-Series Tracking --
 # -------------------------------------------------------------------
-# Figure 2: Weekly cumulative repeat transactions for all models
+# Weekly cumulative repeat transactions for all models
 # ------------------------------------------------------------------
 # Cumulative actual transactions
 cum_actual = weekly_actual.cumsum()
@@ -581,11 +576,9 @@ plt.xlabel("Week")
 plt.ylabel("Cumulative repeat transactions")
 plt.title("Figure 2: Weekly Time-Series Tracking for CDNOW Data")
 plt.legend()
-plt.savefig(os.path.join(save_figures_path, "Figure2_weekly_tracking.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(save_figures_path, "Weekly_Tracking.png"), dpi=300, bbox_inches='tight')
 plt.show()
-
-
-plt.savefig(os.path.join(project_root, "outputs", "figures","Figure3_conditional_expectation.png"), dpi=300, bbox_inches='tight')
+# ------------------------------------------------------------------
 
 # %% 8. Figure 3: Conditional expectation of future transactions for all models
 # -------------------------------------------------------------------
@@ -660,106 +653,124 @@ plt.plot(cond_df.index, cond_df["HB Bi M1"],     ':',  label="HB Bivariate M1")
 plt.plot(cond_df.index, cond_df["HB Bi M2"],     '-.', label="HB Bivariate M2")
 plt.plot(cond_df.index, cond_df["HB Tri M1"],    '-',  label="HB Trivariate M1")
 plt.plot(cond_df.index, cond_df["HB Tri M2"],    '--', label="HB Trivariate M2")
-plt.xlabel("Transactions in calibration (weeks 1–39)")
-plt.ylabel("Average transactions in weeks 40–78")
+plt.xlabel("Transactions in calibration (weeks 1-39)")
+plt.ylabel("Average transactions in weeks 40-78")
 plt.title("Figure 3: Conditional Expectation of Future Transactions")
 plt.legend()
 plt.savefig(
-    os.path.join(save_figures_path, "Figure3_conditional_expectation_all_models.png"),
+    os.path.join(save_figures_path, "Conditional_Expectation.png"),
     dpi=300, bbox_inches='tight'
 )
 plt.show()
 
-# %% 9. MCMC Diagnostics
-# -- 9. MCMC Diagnostics --
-
-# -------------------------------------------------------------------
-# Plot 6. Create scatterplots to visualize the predictions of both models
-# -------------------------------------------------------------------
+# %% 9. Scatterplot - Prediction of all models
+# -- 9. Scatterplot - Prediction of all models
 import seaborn as sns
 sns.set(style="whitegrid")
 
-# Create a figure with two subplots
-fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
+# --- posterior mean alive‑probabilities for trivariate models
+mean_z_tri_m1 = np.concatenate(tri_m1["level_1"], axis=0)[:, :, 3].mean(axis=0)
+mean_z_tri_m2 = np.concatenate(tri_m2["level_1"], axis=0)[:, :, 3].mean(axis=0)
 
-cbs["xstar_bi_m1_pred"] = (mean_lambda_bi_m1/mean_mu_bi_m1) * (1 - np.exp(-mean_mu_bi_m1 * t_star))
-cbs["xstar_bi_m2_pred"] = (mean_lambda_bi_m2/mean_mu_bi_m2) * (1 - np.exp(-mean_mu_bi_m2 * t_star))
+cbs["xstar_bi_m1_pred"]  = (mean_lambda_bi_m1 / mean_mu_bi_m1)  * (1 - np.exp(-mean_mu_bi_m1  * t_star))
+cbs["xstar_bi_m2_pred"]  = (mean_lambda_bi_m2 / mean_mu_bi_m2)  * (1 - np.exp(-mean_mu_bi_m2  * t_star))
+cbs["xstar_tri_m1_pred"] = mean_z_tri_m1 * (mean_lambda_tri_m1 / mean_mu_tri_m1) * (1 - np.exp(-mean_mu_tri_m1 * t_star))
+cbs["xstar_tri_m2_pred"] = mean_z_tri_m2 * (mean_lambda_tri_m2 / mean_mu_tri_m2) * (1 - np.exp(-mean_mu_tri_m2 * t_star))
 
+# Create a figure with four subplots (flattened 2x2 grid)
+fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
+axes = axes.flatten()
 
+# BI VARIATE ------------+
 # Scatterplot for Model M1
 axes[0].scatter(cbs["x_star"], cbs["xstar_bi_m1_pred"], alpha=0.4, color="tab:blue")
 axes[0].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
-axes[0].set_title("M1: Without Covariates")
+axes[0].set_title("Bi M1: Without Covariates")
 axes[0].set_xlabel("Actual x_star")
 axes[0].set_ylabel("Predicted x_star")
 
 # Scatterplot for Model M2
 axes[1].scatter(cbs["x_star"], cbs["xstar_bi_m2_pred"], alpha=0.4, color="tab:green")
 axes[1].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
-axes[1].set_title("Bi_M2: With first.sales")
+axes[1].set_title("Bi M2: With first.sales")
 axes[1].set_xlabel("Actual x_star")
+# -----------
+
+# TRI VARIATE -----------+
+# Scatterplot for Model M1
+axes[2].scatter(cbs["x_star"], cbs["xstar_tri_m1_pred"], alpha=0.4, color="tab:blue")
+axes[2].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
+axes[2].set_title("Tri M1: Without Covariates")
+axes[2].set_xlabel("Actual x_star")
+axes[2].set_ylabel("Predicted x_star")
+
+# Scatterplot for Model M2
+axes[3].scatter(cbs["x_star"], cbs["xstar_tri_m2_pred"], alpha=0.4, color="tab:green")
+axes[3].plot([0, cbs["x_star"].max()], [0, cbs["x_star"].max()], 'r--')
+axes[3].set_title("Tri M2: With age & gender")
+axes[3].set_xlabel("Actual x_star")
 
 # Remove grid from both subplots
 for ax in axes:
     ax.grid(False)
 
 plt.tight_layout()
-plt.savefig(os.path.join(project_root, "outputs", "figures","Scatter_M1_M2.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(save_figures_path, "Scatter_Prediction.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
-# -------------------------------------------------------------------
-# 7. Visualize the predicted alive vs. churned customers
-# -------------------------------------------------------------------
-# Add a new column for predicted alive status based on xstar_m2_pred
-cbs["is_alive_pred"] = np.where(cbs["xstar_m2_pred"] >= 1, 1, 0)
+# %% 10. Alive vs Churned customers
+# -- 10. Alive vs Churned customers
+# ------------------------------------------------------------------
+# Alive vs. Churned – four HB models in one 2×2 barplot grid
+# ------------------------------------------------------------------
+# Binary alive prediction (≥ 1 repeat forecast in weeks 40–78)
+cbs["bi_m1_alive_pred"]  = (cbs["xstar_bi_m1_pred"]  >= 1).astype(int)
+cbs["bi_m2_alive_pred"]  = (cbs["xstar_bi_m2_pred"]  >= 1).astype(int)
+cbs["tri_m1_alive_pred"] = (cbs["xstar_tri_m1_pred"] >= 1).astype(int)
+cbs["tri_m2_alive_pred"] = (cbs["xstar_tri_m2_pred"] >= 1).astype(int)
 
-# Prepare data
-counts = cbs["is_alive_pred"].value_counts().sort_index()
-labels = ["Churned (z = 0)", "Alive (z = 1)"]
-colors = ["#d3d3d3", "#4a90e2"]  # Light grey and business blue
+model_cols = {
+    "Bivariate M1": "bi_m1_alive_pred",
+    "Bivariate M2": "bi_m2_alive_pred",
+    "Trivariate M1": "tri_m1_alive_pred",
+    "Trivariate M2": "tri_m2_alive_pred",
+}
 
-# Create figure and axis
-fig, ax = plt.subplots(figsize=(7, 4))
+labels  = ["Churned (z = 0)", "Alive (z = 1)"]
+colors  = ["#d3d3d3", "#4a90e2"]   # light grey / business blue
 
-# Plot bar chart
-bars = ax.bar(labels, counts, color=colors, width=0.5)
+fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharey=True)
+axes = axes.flatten()
 
-# Set axis labels and title
-ax.set_ylabel("Number of customers", fontsize=11)
-ax.set_title("Predicted Alive vs. Churned\n(Last Draw of MCMC Chain)", fontsize=13)
+for ax, (title, col) in zip(axes, model_cols.items()):
+    counts = cbs[col].value_counts().sort_index()
+    bars = ax.bar(labels, counts, color=colors, width=0.55)
 
+    # Axis styling
+    ax.set_title(title, fontsize=12)
+    ax.set_ylabel("Number of customers")
+    ax.grid(False)
+    ax.spines[['right', 'top', 'left']].set_visible(False)
+    ax.spines['bottom'].set_color('#999999')
+    ax.tick_params(axis='y', colors='#444444')
+    ax.tick_params(axis='x', colors='#444444')
 
-# Annotate each bar with its value
-for bar in bars:
-    height = bar.get_height()
-    ax.text(
-        bar.get_x() + bar.get_width() / 2,
-        height + 5,
-        f"{int(height)}",
-        ha='center',
-        va='bottom',
-        fontsize=10
-    )
+    # Annotate bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                height + max(counts) * 0.02,
+                f"{int(height)}",
+                ha='center', va='bottom', fontsize=9)
 
-# Disable grid lines so they don’t appear behind annotations
-ax.grid(False)
-
-# Clean up the axis appearance
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
-# Hide the vertical left spine so it doesn’t bisect the first bar
-ax.spines['left'].set_visible(False)
-ax.spines['bottom'].set_color('#999999')
-ax.tick_params(axis='y', colors='#444444')
-ax.tick_params(axis='x', colors='#444444')
-
-# Final layout adjustment
-plt.tight_layout()
-plt.savefig(os.path.join(project_root, "outputs", "figures","Alive_vs_Churned.png"), dpi=300, bbox_inches='tight')
+plt.suptitle("Predicted Alive vs. Churned Customers - Four HB Models",
+             fontsize=14, y=0.98)
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.savefig(os.path.join(save_figures_path, "Alive_vs_Churned.png"),
+            dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
-# 9. MCMC Diagnostics for all four models
-# -------------------------------------------------------------------
+
 # %% Traceplots for Bi & Tri models
 # Convert Bivariate M1 to InferenceData
 idata_bi_m1 = az.from_dict(
