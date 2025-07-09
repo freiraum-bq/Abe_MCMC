@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------
 # --------------- this script contains -----------------------------
-# --------- the analysis on the full CDNOW dataset -----------------
+# --------- the analysis on the CDNOW dataset ----------------------
 # ------- with both bivariate and trivariate models ----------------
 # ------------------------------------------------------------------
 # -----------------------------------------------------------------
@@ -40,18 +40,12 @@ from src.models.utils.analysis_bi_helpers import (summarize_level2,
                                                   extract_correlation, 
                                                   chain_total_loglik, 
                                                   compute_table4)
-
-# ---------------------------------------------------------------------
-# Helper: enforce uniform decimal display (e.g. 0.63, 2.57, …)
-# ---------------------------------------------------------------------
-def _fmt(df: pd.DataFrame, dec: int) -> pd.DataFrame:
-    """Return a copy of *df* with all float cells formatted to *dec* decimals."""
-    fmt = f"{{:.{dec}f}}".format
-    return df.applymap(lambda v: fmt(v) if isinstance(v, (float, np.floating)) else v)
-# ------------------------------------------------------------------
+from src.models.utils.analysis_display_helper import _fmt
 
 # Path to save the figures:
 save_figures_path = os.path.join(project_root, "outputs", "figures", "x_comparison_four_models")
+plots_path = os.path.join(save_figures_path, "plots")
+os.makedirs(plots_path, exist_ok=True)
 
 # ---------------------------------------------------------------------
 
@@ -69,12 +63,6 @@ os.makedirs(os.path.dirname(excel_path), exist_ok=True)
 figure_path = os.path.join(project_root, "outputs", "figures", "x_comparison_four_models")
 os.makedirs(figure_path, exist_ok=True)
 
-#-----------
-#------------------------------
-#-------------------------------------------------
-# CHANGE TO FULL CDNOW DATASET ONCE IT ALL RUNS; DELETE THIS COMMENT AFTERWARDS
-#-------------------------------------------------
-#------------------------------
 # Load Estimates
 # Bivariate
 with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "rb") as f:
@@ -491,14 +479,17 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     table2_disp.to_excel(writer, sheet_name="ModelFit_Table", index=False, float_format="%.2f")
 # ------------------------------------------------------------------
 
-
 # %% 7. Weekly-Series Tracking
 # -- 7. Weekly-Series Tracking --
-# -------------------------------------------------------------------
-# Weekly cumulative repeat transactions for all models
-# ------------------------------------------------------------------
-# Cumulative actual transactions
 cum_actual = weekly_actual.cumsum()
+
+ # --- Birth‑aligned Pareto/NBD baseline (MLE) -----------------
+# first purchase week for each customer
+birth_week = (
+    cdnowElog.groupby("cust")["week"].min()
+    .reindex(cbs["cust"])
+    .to_numpy()
+)
 
 # Fit classical Pareto/NBD by maximum likelihood
 pnbd_mle = ParetoNBDFitter(penalizer_coef=0.0)
@@ -515,6 +506,7 @@ exp_xstar_m1 = pnbd_mle.conditional_expected_number_of_purchases_up_to_time(
     cbs["T_cal"]
 )
 
+# --- Compute classical Pareto/NBD cumulative curve if missing ----
 if "cum_pnbd_ml" not in globals():
     # birth week of each customer (first purchase)
     birth_week = (
@@ -527,141 +519,218 @@ if "cum_pnbd_ml" not in globals():
         rel_t = np.clip(t - birth_week, 0, None)
         exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
         cum_pnbd_ml[t_idx] = exp_per_cust.sum()
+        
+# Weekly PNB (MLE) increments
+inc_pnbd_weekly = np.empty_like(times, dtype=float)
+inc_pnbd_weekly[0] = cum_pnbd_ml[0]
+inc_pnbd_weekly[1:] = np.diff(cum_pnbd_ml)
+for t_idx, t in enumerate(times):
+    # time since first purchase (≥0) for each customer
+    rel_t = np.clip(t - birth_week, 0, None)
+    exp_per_cust = pnbd_mle.expected_number_of_purchases_up_to_time(rel_t)
+    cum_pnbd_ml[t_idx] = exp_per_cust.sum()
 
-# Bivariate HB M1 and M2 closed-form cumulative forecasts
-lam_bi1 = mean_lambda_m1
-mu_bi1  = mean_mu_m1
-lam_bi2 = mean_lambda_m2
-mu_bi2  = mean_mu_m2
+# --- Posterior‑predictive HB curve -----------------------------------------
+# Reset inc_hb_weekly to zero for Figure 2 calculation
+inc_hb_weekly_bi_m1 = np.zeros_like(times, dtype=float)
+inc_hb_weekly_bi_m2 = np.zeros_like(times, dtype=float)
+inc_hb_weekly_tri_m1 = np.zeros_like(times, dtype=float)
+inc_hb_weekly_tri_m2 = np.zeros_like(times, dtype=float)
 
-cum_bi1 = np.array([
-    np.sum((lam_bi1/mu_bi1)*(1 - np.exp(-mu_bi1 * t)))
-    for t in times
-])
-cum_bi2 = np.array([
-    np.sum((lam_bi2/mu_bi2)*(1 - np.exp(-mu_bi2 * t)))
-    for t in times
-])
+# Predictive draws for validation period
+xstar_bi_m1_draws = draw_future_transactions(cbs, bi_m1, T_star=t_star, seed=42)
+xstar_bi_m2_draws = draw_future_transactions(cbs, bi_m2, T_star=t_star, seed=42)
+xstar_tri_m1_draws = draw_future_transactions(cbs, tri_m1, T_star=t_star, seed=42)
+xstar_tri_m2_draws = draw_future_transactions(cbs, tri_m2, T_star=t_star, seed=42)
 
-# Trivariate HB (intercept-only and + gender & age)
-def simulate_hb_cumulative(draws):
-    all_chains = draws["level_1"]
-    total_draws = sum(chain.shape[0] for chain in all_chains)
-    inc = np.zeros_like(times, dtype=float)
-    for chain_idx, chain in enumerate(all_chains):
-        for draw_idx in range(chain.shape[0]):
-            lam_d = chain[draw_idx, :, 0]
-            mu_d  = chain[draw_idx, :, 1]
-            tau_d = chain[draw_idx, :, 2]
-            rng = np.random.default_rng(chain_idx * chain.shape[0] + draw_idx)
-            for t_idx, t in enumerate(times):
-                active = (t > birth_week) & (t <= birth_week + tau_d)
-                inc[t_idx] += rng.poisson(lam=lam_d * active).sum()
-    inc /= total_draws
-    return np.cumsum(inc)
+n_bi_m1_draws = len(xstar_bi_m1_draws)
+n_bi_m2_draws = len(xstar_bi_m2_draws)
+n_tri_m1_draws = len(xstar_tri_m1_draws)
+n_tri_m2_draws = len(xstar_tri_m2_draws)
 
-cum_tri1 = simulate_hb_cumulative(tri_m1)
-cum_tri2 = simulate_hb_cumulative(tri_m2)
+for d in range(n_bi_m1_draws):
+    # map flat draw index `d` to (chain, draw) indices
+    draws_per_chain = len(bi_m1["level_1"][0])
+    chain = d // draws_per_chain
+    idx   = d % draws_per_chain
+    lam_d = bi_m1["level_1"][chain][idx, :, 0]
+    mu_d  = bi_m1["level_1"][chain][idx, :, 1]
+    tau_d = bi_m1["level_1"][chain][idx, :, 2]
 
-# Plot all curves
+    rng_d = np.random.default_rng(d)  # reproducible per draw
+    for t_idx, t in enumerate(times):
+        dt = 1.0
+        active = (t > birth_week) & (t <= (birth_week + tau_d))   # after first purchase, before churn
+        inc = rng_d.poisson(lam=lam_d * dt * active)
+        inc_hb_weekly_bi_m1[t_idx] += inc.sum()
+# average across draws and take cumulative
+inc_hb_weekly_bi_m1 /= n_bi_m1_draws
+cum_hb_bi_m1 = np.cumsum(inc_hb_weekly_bi_m1)
+
+for d in range(n_bi_m2_draws):
+    # map flat draw index `d` to (chain, draw) indices
+    draws_per_chain = len(bi_m2["level_1"][0])
+    chain = d // draws_per_chain
+    idx   = d % draws_per_chain
+    lam_d = bi_m2["level_1"][chain][idx, :, 0]
+    mu_d  = bi_m2["level_1"][chain][idx, :, 1]
+    tau_d = bi_m2["level_1"][chain][idx, :, 2]
+
+    rng_d = np.random.default_rng(d)  # reproducible per draw
+    for t_idx, t in enumerate(times):
+        dt = 1.0
+        active = (t > birth_week) & (t <= (birth_week + tau_d))   # after first purchase, before churn
+        inc = rng_d.poisson(lam=lam_d * dt * active)
+        inc_hb_weekly_bi_m2[t_idx] += inc.sum()
+# average across draws and take cumulative
+inc_hb_weekly_bi_m2 /= n_bi_m2_draws
+cum_hb_bi_m2 = np.cumsum(inc_hb_weekly_bi_m2)
+
+for d in range(n_tri_m1_draws):
+    # map flat draw index `d` to (chain, draw) indices
+    draws_per_chain = len(tri_m1["level_1"][0])
+    chain = d // draws_per_chain
+    idx   = d % draws_per_chain
+    lam_d = tri_m1["level_1"][chain][idx, :, 0]
+    mu_d  = tri_m1["level_1"][chain][idx, :, 1]
+    tau_d = tri_m1["level_1"][chain][idx, :, 2]
+
+    rng_d = np.random.default_rng(d)  # reproducible per draw
+    for t_idx, t in enumerate(times):
+        dt = 1.0
+        active = (t > birth_week) & (t <= (birth_week + tau_d))   # after first purchase, before churn
+        inc = rng_d.poisson(lam=lam_d * dt * active)
+        inc_hb_weekly_tri_m1[t_idx] += inc.sum()
+# average across draws and take cumulative
+inc_hb_weekly_tri_m1 /= n_tri_m1_draws
+cum_hb_tri_m1 = np.cumsum(inc_hb_weekly_tri_m1)
+
+for d in range(n_tri_m2_draws):
+    # map flat draw index `d` to (chain, draw) indices
+    draws_per_chain = len(tri_m2["level_1"][0])
+    chain = d // draws_per_chain
+    idx   = d % draws_per_chain
+    lam_d = tri_m2["level_1"][chain][idx, :, 0]
+    mu_d  = tri_m2["level_1"][chain][idx, :, 1]
+    tau_d = tri_m2["level_1"][chain][idx, :, 2]
+
+    rng_d = np.random.default_rng(d)  # reproducible per draw
+    for t_idx, t in enumerate(times):
+        dt = 1.0
+        active = (t > birth_week) & (t <= (birth_week + tau_d))   # after first purchase, before churn
+        inc = rng_d.poisson(lam=lam_d * dt * active)
+        inc_hb_weekly_tri_m2[t_idx] += inc.sum()
+# average across draws and take cumulative
+inc_hb_weekly_tri_m2 /= n_tri_m2_draws
+cum_hb_tri_m2 = np.cumsum(inc_hb_weekly_tri_m2)
+
 plt.figure(figsize=(8,5))
-plt.plot(times, cum_actual, '-', label="Actual")
-plt.plot(times, cum_pnbd_ml, '--', label="Pareto/NBD (MLE)")
-plt.plot(times, cum_bi1, ':', label="HB Bivariate M1")
-plt.plot(times, cum_bi2, '-.', label="HB Bivariate M2")
-plt.plot(times, cum_tri1, '-', label="HB Trivariate M1")
-plt.plot(times, cum_tri2, '--', label="HB Trivariate M2")
-plt.axvline(x=t_star, color='k', linestyle='--')
+plt.plot(times, cum_actual, '-', color='tab:blue', linewidth=2, label="Actual")
+plt.plot(times, cum_pnbd_ml, '--', color='tab:orange', linewidth=2, label="Pareto/NBD (MLE)")
+plt.plot(times, cum_hb_bi_m1, ':', color='tab:olive', linewidth=2, label="HB Bivariate M1")
+plt.plot(times, cum_hb_bi_m2, ':', color='tab:green', linewidth=2, label="HB Bivariate M2")
+plt.plot(times, cum_hb_tri_m1, '-.', color='tab:purple', linewidth=2, label="HB Trivariate M1")
+plt.plot(times, cum_hb_tri_m2, '*-', color='tab:pink', linewidth=2, label="HB Trivariate M2")
+plt.axvline(x=int(t_star), color='k', linestyle='--')
 plt.xlabel("Week")
 plt.ylabel("Cumulative repeat transactions")
 plt.title("Figure 2: Weekly Time-Series Tracking for CDNOW Data")
 plt.legend()
-plt.savefig(os.path.join(save_figures_path, "Weekly_Tracking.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(plots_path, "Weekly_Tracking.png"), dpi=300, bbox_inches='tight')
 plt.show()
 # ------------------------------------------------------------------
 
-# %% 8. Figure 3: Conditional expectation of future transactions for all models
-# -------------------------------------------------------------------
-# Compute per‐customer expected future transactions at t_star
+# %% 8. Conditional expectation of future transactions
+# -- 8. Conditional expectation of future transactions
 
-# 1) Pareto/NBD (MLE)
-exp_pnbd = exp_xstar_m1
+# Group by number of calibration transactions (0–7+)
+# Use analytical expectations, with different formulas for Pareto/NBD (M1) and HB (M2)
 
-# 2) HB Bivariate M1
-exp_bi1 = (mean_lambda_m1 / mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
+# Expected future repeats for Figure 3:
+all_draws_bi_m1 = np.concatenate(bi_m1["level_1"], axis=0)
+all_draws_bi_m2 = np.concatenate(bi_m2["level_1"], axis=0)
+all_draws_tri_m1 = np.concatenate(tri_m1["level_1"], axis=0)
+all_draws_tri_m2 = np.concatenate(tri_m2["level_1"], axis=0)
 
-# 3) HB Bivariate M2
-exp_bi2 = (mean_lambda_m2 / mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
+mean_lambda_bi_m1_cust = all_draws_bi_m1[:, :, 0].mean(axis=0)
+mean_mu_bi_m1_cust     = all_draws_bi_m1[:, :, 1].mean(axis=0)
+mean_z_bi_m1_cust      = all_draws_bi_m1[:, :, 3].mean(axis=0)
 
-# 4) HB Trivariate M1
-all_tri1 = np.concatenate(tri_m1["level_1"], axis=0)
-lam_tri1 = all_tri1[:, :, 0].mean(axis=0)
-mu_tri1  = all_tri1[:, :, 1].mean(axis=0)
-z_tri1   = all_tri1[:, :, 3].mean(axis=0)
-exp_tri1 = z_tri1 * (lam_tri1 / mu_tri1) * (1 - np.exp(-mu_tri1 * t_star))
+mean_lambda_bi_m2_cust = all_draws_bi_m2[:, :, 0].mean(axis=0)
+mean_mu_bi_m2_cust     = all_draws_bi_m2[:, :, 1].mean(axis=0)
+mean_z_bi_m2_cust      = all_draws_bi_m2[:, :, 3].mean(axis=0)
 
-# 5) HB Trivariate M2
-all_tri2 = np.concatenate(tri_m2["level_1"], axis=0)
-lam_tri2 = all_tri2[:, :, 0].mean(axis=0)
-mu_tri2  = all_tri2[:, :, 1].mean(axis=0)
-z_tri2   = all_tri2[:, :, 3].mean(axis=0)
-exp_tri2 = z_tri2 * (lam_tri2 / mu_tri2) * (1 - np.exp(-mu_tri2 * t_star))
+mean_lambda_tri_m1_cust = all_draws_tri_m1[:, :, 0].mean(axis=0)
+mean_mu_tri_m1_cust     = all_draws_tri_m1[:, :, 1].mean(axis=0)
+mean_z_tri_m1_cust      = all_draws_tri_m1[:, :, 3].mean(axis=0)
 
-# Assemble into DataFrame
-df_cond = pd.DataFrame({
-    "x":            cbs["x"],
-    "Actual":       cbs["x_star"],
-    "Pareto/NBD":   exp_pnbd,
-    "HB Bi M1":     exp_bi1,
-    "HB Bi M2":     exp_bi2,
-    "HB Tri M1":    exp_tri1,
-    "HB Tri M2":    exp_tri2
+mean_lambda_tri_m2_cust = all_draws_tri_m2[:, :, 0].mean(axis=0)
+mean_mu_tri_m2_cust     = all_draws_tri_m2[:, :, 1].mean(axis=0)
+mean_z_tri_m2_cust      = all_draws_tri_m2[:, :, 3].mean(axis=0)
+
+
+# HB expectation (Model M2) – include posterior P(alive)
+exp_xstar_bi_m1 = mean_z_bi_m1_cust * (mean_lambda_bi_m1_cust / mean_mu_bi_m1_cust) * (1 - np.exp(-mean_mu_bi_m1_cust * t_star))
+exp_xstar_bi_m2 = mean_z_bi_m2_cust * (mean_lambda_bi_m2_cust / mean_mu_bi_m2_cust) * (1 - np.exp(-mean_mu_bi_m2_cust * t_star))
+
+exp_xstar_tri_m1 = mean_z_tri_m1_cust * (mean_lambda_tri_m1_cust / mean_mu_tri_m1_cust) * (1 - np.exp(-mean_mu_tri_m1_cust * t_star))
+exp_xstar_tri_m2 = mean_z_tri_m2_cust * (mean_lambda_tri_m2_cust / mean_mu_tri_m2_cust) * (1 - np.exp(-mean_mu_tri_m2_cust * t_star))
+
+# Classical Pareto/NBD (MLE) expected future repeats for the next 39 weeks
+exp_xstar_m1 = pnbd_mle.conditional_expected_number_of_purchases_up_to_time(
+    t_star,
+    cbs["x"],
+    cbs["t_x"],
+    cbs["T_cal"]
+)
+
+df = pd.DataFrame({
+    "x":      cbs["x"],
+    "actual": cbs["x_star"],
+    "pnbd":   exp_xstar_m1,   # Pareto/NBD expectation (no P(alive))
+    "hb_bi_m1":     exp_xstar_bi_m1, 
+    "hb_bi_m2":     exp_xstar_bi_m2,    
+    "hb_tri_m1":     exp_xstar_tri_m1,   
+    "hb_tri_m2":     exp_xstar_tri_m2         
 })
-
-# Group by calibration count (0–7+)
 groups = []
 for k in range(7):
-    grp = df_cond[df_cond["x"] == k]
+    grp = df[df["x"]==k]
     groups.append((
         str(k),
-        grp["Actual"].mean(),
-        grp["Pareto/NBD"].mean(),
-        grp["HB Bi M1"].mean(),
-        grp["HB Bi M2"].mean(),
-        grp["HB Tri M1"].mean(),
-        grp["HB Tri M2"].mean()
+        grp["actual"].mean(),
+        grp["pnbd"].mean(),
+        grp["hb_bi_m1"].mean(),
+        grp["hb_bi_m2"].mean(),
+        grp["hb_tri_m1"].mean(),
+        grp["hb_tri_m2"].mean()
     ))
-grp7 = df_cond[df_cond["x"] >= 7]
+grp7 = df[df["x"]>=7]
 groups.append((
     "7+",
-    grp7["Actual"].mean(),
-    grp7["Pareto/NBD"].mean(),
-    grp7["HB Bi M1"].mean(),
-    grp7["HB Bi M2"].mean(),
-    grp7["HB Tri M1"].mean(),
-    grp7["HB Tri M2"].mean()
+    grp7["actual"].mean(),
+    grp7["pnbd"].mean(),
+    grp7["hb_bi_m1"].mean(),
+    grp7["hb_bi_m2"].mean(),
+    grp7["hb_tri_m1"].mean(),
+    grp7["hb_tri_m2"].mean(),
 ))
-cond_df = pd.DataFrame(groups, columns=[
-    "x", "Actual", "Pareto/NBD", "HB Bi M1", "HB Bi M2", "HB Tri M1", "HB Tri M2"
-]).set_index("x")
+cond_df = pd.DataFrame(groups, columns=["x","Actual","Pareto/NBD", "HB Bivariate M1","HB Bivariate M2", "HB Trivariate M1","HB Trivariate M2" ]).set_index("x")
 
-# Plot conditional expectations
 plt.figure(figsize=(8,5))
-plt.plot(cond_df.index, cond_df["Actual"],       '-',  label="Actual")
-plt.plot(cond_df.index, cond_df["Pareto/NBD"],   '--', label="Pareto/NBD")
-plt.plot(cond_df.index, cond_df["HB Bi M1"],     ':',  label="HB Bivariate M1")
-plt.plot(cond_df.index, cond_df["HB Bi M2"],     '-.', label="HB Bivariate M2")
-plt.plot(cond_df.index, cond_df["HB Tri M1"],    '-',  label="HB Trivariate M1")
-plt.plot(cond_df.index, cond_df["HB Tri M2"],    '--', label="HB Trivariate M2")
-plt.xlabel("Transactions in calibration (weeks 1-39)")
+plt.plot(cond_df.index, cond_df["Actual"], '-', color='tab:blue', linewidth=2, label="Actual")
+plt.plot(cond_df.index, cond_df["Pareto/NBD"], marker='*', linestyle='--', color='tab:orange', linewidth=2, label="Pareto/NBD")
+plt.plot(cond_df.index, cond_df["HB Bivariate M1"], marker='x', linestyle=':', color='tab:olive', linewidth=2, label="HB Bivariate M1")
+plt.plot(cond_df.index, cond_df["HB Bivariate M2"], marker='+', linestyle=':', color='tab:green', linewidth=2, label="HB Bivariate M2")
+plt.plot(cond_df.index, cond_df["HB Trivariate M1"], marker='*', linestyle='-', color='tab:purple', linewidth=2, label="HB Bivariate M1")
+plt.plot(cond_df.index, cond_df["HB Trivariate M2"], marker='', linestyle='-', color='tab:pink', linewidth=2, label="HB Bivariate M2")
+plt.xlabel("Number of transactions in weeks 1-39")
 plt.ylabel("Average transactions in weeks 40-78")
-plt.title("Figure 3: Conditional Expectation of Future Transactions")
+plt.title("Conditional Expectation of Future Transactions for CDNOW Data")
 plt.legend()
-plt.savefig(
-    os.path.join(save_figures_path, "Conditional_Expectation.png"),
-    dpi=300, bbox_inches='tight'
-)
+plt.savefig(os.path.join(plots_path, "Conditional_Expectation.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# ------------------------------------------------------------------
 
 # %% 9. Scatterplot - Prediction of all models
 # -- 9. Scatterplot - Prediction of all models
@@ -715,7 +784,7 @@ for ax in axes:
     ax.grid(False)
 
 plt.tight_layout()
-plt.savefig(os.path.join(save_figures_path, "Scatter_Prediction.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(plots_path, "Scatter_Prediction.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
 # %% 10. Alive vs Churned customers
@@ -766,12 +835,16 @@ for ax, (title, col) in zip(axes, model_cols.items()):
 plt.suptitle("Predicted Alive vs. Churned Customers - Four HB Models",
              fontsize=14, y=0.98)
 plt.tight_layout(rect=[0, 0, 1, 0.96])
-plt.savefig(os.path.join(save_figures_path, "Alive_vs_Churned.png"),
+plt.savefig(os.path.join(plots_path, "Alive_vs_Churned.png"),
             dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
 
-# %% Traceplots for Bi & Tri models
+# %% 11. Traceplots
+# -- 11. Traceplots
+# Path to save the figures:
+plots_path = os.path.join(save_figures_path, "SamplingPlots")
+
 # Convert Bivariate M1 to InferenceData
 idata_bi_m1 = az.from_dict(
     posterior={"level_2": np.array(bi_m1["level_2"])},
@@ -800,7 +873,6 @@ idata_tri_m2 = az.from_dict(
     dims={"level_2": ["param"]}
 )
 
-
 # Traceplots
 for idata, label in [
     (idata_bi_m1, "HB Bivariate M1"),
@@ -811,6 +883,7 @@ for idata, label in [
     az.plot_trace(idata, var_names=["level_2"], figsize=(12, max(4, len(idata.posterior["level_2"].coords["param"]) * 1.5)))
     plt.suptitle(f"Traceplot - {label}", fontsize=14, y=1.02)
     plt.tight_layout()
+    plt.savefig(os.path.join(plots_path, f"Traceplot_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
 
 # Autocorrelation plots
@@ -823,6 +896,7 @@ for idata, label in [
     az.plot_autocorr(idata, var_names=["level_2"], figsize=(12, max(4, len(idata.posterior["level_2"].coords["param"]) * 1.5)))
     plt.suptitle(f"Autocorrelation - {label}", fontsize=14)
     plt.tight_layout()
+    plt.savefig(os.path.join(plots_path, f"Autocorr_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
 
 # Posterior distributions
@@ -843,7 +917,9 @@ for idata, label in [
     )
     plt.suptitle(f"Posterior Distributions - {label}", fontsize=16, y=1.02)
     plt.subplots_adjust(hspace=0.5)
+    plt.savefig(os.path.join(plots_path, f"PosteriorDist_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
+# ------------------------------------------------------------------
 
 # %% 10. BIVARIATE Convergence 
 # -- 10. BIVARIATE Convergence 
@@ -885,17 +961,16 @@ def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
 summary_m1 = level2_summary(bi_m1, label="m1")
 print(summary_m1)
 
-if "draws_m2" in globals() and bi_m2 is not None:
-    summary_m2 = level2_summary(bi_m2, label="m2")
-    print("\n" + "-" * 60)
-    print(summary_m2)
+# Always compute and print Bivariate M2 convergence
+summary_m2 = level2_summary(bi_m2, label="m2")
+print("\n" + "-" * 60)
+print(summary_m2)
 
-# Save convergence summaries to the Excel file
-with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
+# Save bivariate convergence summaries to separate sheets
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     summary_m1.to_excel(writer, sheet_name="Bi_Convergence_M1", index=True)
-    if 'summary_m2' in locals():
-        summary_m2.to_excel(writer, sheet_name="Bi_Convergence_M2", index=True)
-
+    summary_m2.to_excel(writer, sheet_name="Bi_Convergence_M2", index=True)
+# ------------------------------------------------------------------
 
 # %% 11. TRIVARIATE Convergence
 # -- 11. TRIVARIATE Convergence
@@ -939,16 +1014,17 @@ def level2_summary_trivar(draws: dict, label: str = "M1") -> pd.DataFrame:
     summary.index = [f"level_2[{p}]" for p in param_names]
     return summary
 
-
 # ------- run for both models ---------------------------------------------
 summary_3pI  = level2_summary_trivar(tri_m1,  label="M1")
 summary_3pII = level2_summary_trivar(tri_m2, label="M2")
 
-print("\nArviZ level-2 summary – Model 1 (intercept only)")
+print("\nArviZ level-2 summary - Model 1 (intercept only)")
 print(summary_3pI)
-print("\nArviZ level-2 summary – Model 2 (with covariates)")
+print("\nArviZ level-2 summary - Model 2 (with covariates)")
 print(summary_3pII)
 
-# Save the DataFrame to the Excel file
-with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
-    table1_stats.to_excel(writer, sheet_name="Tri_Convergence", index=True)
+# Save trivariate convergence summaries to separate sheets
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+    summary_3pI.to_excel(writer, sheet_name="Tri_Convergence_M1", index=True)
+    summary_3pII.to_excel(writer, sheet_name="Tri_Convergence_M2", index=True)
+
