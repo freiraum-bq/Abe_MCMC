@@ -62,19 +62,19 @@ start_m1 = time.time()
 draws_m1 = mcmc_draw_parameters(
     cal_cbs =   cbs,
     covariates  =[],
-    mcmc    =   4000,      # 4000 total iterations
-    burnin  =   10000,   # discard the first 10 000 as warm-up
+    mcmc    =   8000,      # 4000 total iterations
+    burnin  =   20000,   # discard the first 10 000 as warm-up
     thin    =   1,         # keep every draw; 4 000 draws after burn-in
     chains  =   4,
     seed    =   42,
     trace   =   1000,
-    n_mh_steps = 40,
+    n_mh_steps = 50,
 )
 m1_duration = time.time() - start_m1
 print(f"Model M1 runtime: {m1_duration:.2f} seconds")
 
 # Save Model M1 estimates
-with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "wb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m1.pkl"), "wb") as f:
     pickle.dump(draws_m1, f)
 # ------------------------------------------------------------------
 
@@ -86,19 +86,19 @@ start_m2 = time.time()
 draws_m2 = mcmc_draw_parameters(
     cal_cbs =   cbs,
     covariates =["first_sales_scaled", "age_scaled", "gender_binary"],  # Parameters to replicate Abe 2009
-    mcmc    =   4000,     # 14 000 total iterations
-    burnin  =   10000,   # discard the first 10 000 as warm-up
+    mcmc    =   8000,     # 14 000 total iterations
+    burnin  =   20000,   # discard the first 10 000 as warm-up
     thin    =   1,         # keep every draw; 4 000 draws after burn-in
     chains  =   4,
     seed    =   42,
     trace   =   1000,
-    n_mh_steps = 40,
+    n_mh_steps = 50,
 )
 m2_duration = time.time() - start_m2
 print(f"Model M2 runtime: {m2_duration:.2f} seconds")
 
 # Save Model M2 estimates
-with open(os.path.join(pickles_dir, "full_bi_m2.pkl"), "wb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m2.pkl"), "wb") as f:
     pickle.dump(draws_m2, f)
 # ------------------------------------------------------------------
 
@@ -115,8 +115,8 @@ if os.path.exists(csv_path):
 else:
     df_runs = pd.DataFrame(columns=["model", "runtime"])
 for model_name, runtime in [
-    ("full_bi_M1", m1_duration),
-    ("full_bi_M2", m2_duration)
+    ("ext_bi_M1", m1_duration),
+    ("ext_bi_M2", m2_duration)
 ]:
     # Remove any old entry for this model
     df_runs = df_runs[df_runs.model != model_name]

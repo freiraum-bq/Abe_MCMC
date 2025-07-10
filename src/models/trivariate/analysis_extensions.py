@@ -1,7 +1,5 @@
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
-# ------------------------------------------------------------------
-
 import os
 import sys
 # ------------------------------------------------------------------
@@ -17,7 +15,6 @@ project_root = cwd
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 # ------------------------------------------------------------------
-
 # Import rest of libraries
 import numpy as np
 import pandas as pd
@@ -39,7 +36,6 @@ from src.models.utils.analysis_tri_helpers import (summarize_level2,
 
 # For interactive table display
 from IPython.display import display
-
 # ------------------------------------------------------------------------
 
 # %% 2. Load estimates, data and set paths
@@ -49,20 +45,20 @@ from IPython.display import display
 pickles_dir = os.path.join(project_root, "outputs", "pickles")
 
 # Set folder to save Figures 
-figure_path = os.path.join(project_root, "outputs", "figures", "full_extention")
+figure_path = os.path.join(project_root, "outputs", "figures", "extension")
 os.makedirs(figure_path, exist_ok=True)   # create the folder if it doesn’t exist
 
 # Load MCMC draws
-with open(os.path.join(pickles_dir, "full_tri_m1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_tri_m1.pkl"), "rb") as f:
     draws_3pI = pickle.load(f)
-with open(os.path.join(pickles_dir, "full_tri_m2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_tri_m2.pkl"), "rb") as f:
     draws_3pII = pickle.load(f)
 
-# Load CBS data --> CHANGE TO FULL LATER
+# Load CBS data
 cbs_path = os.path.join(project_root, "data", "processed", "cdnow_abeCBS.csv")
 cbs_df = pd.read_csv(cbs_path, dtype={"cust": str}, parse_dates=["first"])
 
-# Load Elog data --> CHANGE TO FULL LATER
+# Load Elog data
 data_path = os.path.join(project_root, "data", "raw", "cdnow_abeElog.csv")
 cdnowElog = pd.read_csv(data_path)
 # Convert date column to datetime
@@ -76,8 +72,7 @@ cbs_df["log_s"] = (
     cbs_df["log_s"]
     .replace(-np.inf, 0.0)
     .fillna(0.0)
-)
-# ------------------------------------------------------------------
+) # ------------------------------------------------------------------
 
 # %% 3. Table 2 – HB RFM model-fit metrics (no covariates vs. gender + age) --
 # -- 3. Table 2 – HB RFM model-fit metrics (no covariates vs. gender + age) --
@@ -372,7 +367,7 @@ ax.tick_params(axis='x', colors='#444444')
 
 # Final layout adjustment
 plt.tight_layout()
-plt.savefig(os.path.join(figure_path, "Alive_vs_Churned_bi.png"), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(figure_path, "Alive_vs_Churned_tri.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
 # %% 7. Poserior distribution and Traceplots
@@ -416,7 +411,6 @@ idata_m2 = az.from_dict(
     ]},
     dims={"level_2": ["param"]}
 )
-
 # Plot traceplots for both models
 az.plot_trace(idata_m1, var_names=["level_2"], figsize=(12, 6))
 plt.suptitle("Traceplot - M1", fontsize=14)
@@ -427,5 +421,4 @@ az.plot_trace(idata_m2, var_names=["level_2"], figsize=(12, 10))
 plt.suptitle("Traceplot - M2", fontsize=14)
 plt.tight_layout()
 plt.show()
-
-# %%
+# ------------------------------------------------------------------

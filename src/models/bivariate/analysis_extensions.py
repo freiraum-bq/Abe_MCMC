@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------
-# this script reproduces the analysis from Abe (2009) | with three customer characteristics & on full dataset
+# this script reproduces the analysis from Abe (2009) | with three customer characteristics
 # ------------------------------------------------------------------
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
@@ -43,33 +43,34 @@ from src.models.utils.analysis_bi_helpers import (summarize_level2,
                                                   chain_total_loglik, 
                                                   compute_table4)
 from src.models.utils.analysis_bi_dynamic import build_bivariate_param_names_and_labels
+# ------------------------------------------------------------------
 
 # %% 2. Load estimates, data and set path
 # -- 2. Load estimates, data and set path
-# ------------------------------------------------------------------
+
 # --- Load Pre-computed Results ---
 pickles_dir = os.path.join(project_root, "outputs", "pickles")
 
 # Set Excel output path
-excel_path = os.path.join(project_root, "outputs", "excel", "abe_extention.xlsx")
+excel_path = os.path.join(project_root, "outputs", "excel", "extension.xlsx")
 os.makedirs(os.path.dirname(excel_path), exist_ok=True)
 
 # Set folder to save Figures 
-figure_path = os.path.join(project_root, "outputs", "figures", "full_extention")
+figure_path = os.path.join(project_root, "outputs", "figures", "extension")
 os.makedirs(figure_path, exist_ok=True)   # create the folder if it doesn’t exist
 
 # Load MCMC draws
-with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m1.pkl"), "rb") as f:
     draws_m1 = pickle.load(f)
-with open(os.path.join(pickles_dir, "full_bi_m2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m2.pkl"), "rb") as f:
     draws_m2 = pickle.load(f)
 
-# Load CBS data ---> CHNAGE TO FULL ONCE ALL WORKS
+# Load CBS data
 cbs_path = os.path.join(project_root, "data", "processed", "cdnow_abeCBS.csv")
 print(f"Loading CBS data from: {cbs_path}")
 cbs = pd.read_csv(cbs_path, dtype={"cust": str}, parse_dates=["first"])
 
-# Load Elog data ---> CHNAGE TO FULL ONCE ALL WORKS
+# Load Elog data
 data_path = os.path.join(project_root, "data", "raw", "cdnow_abeElog.csv")
 print(f"Loading Elog data from: {data_path}")
 cdnowElog = pd.read_csv(data_path)
@@ -77,11 +78,11 @@ cdnowElog = pd.read_csv(data_path)
 cdnowElog["date"] = pd.to_datetime(cdnowElog["date"])
 # ensure the same key type
 cdnowElog["cust"] = cdnowElog["cust"].astype(str)
-
 # ------------------------------------------------------------------
+
 # %% 3. Descriptive Statistics
 # -- 3. Descriptive Statistics --
-# ------------------------------------------------------------------
+
 # ------ Construct Table 1 from Abe 2009  ------
 table1_stats = pd.DataFrame(
     {
@@ -596,8 +597,8 @@ plt.figure(figsize=(8,5))
 plt.plot(cond_df.index, cond_df["Actual"], '-', color='tab:blue', linewidth=2, label="Actual")
 plt.plot(cond_df.index, cond_df["Pareto/NBD"], marker='*', linestyle='--', color='tab:orange', linewidth=2, label="Pareto/NBD")
 plt.plot(cond_df.index, cond_df["HB"], marker='x', linestyle=':', color='tab:green', linewidth=2, label="HB")
-plt.xlabel("Number of transactions in weeks 1–39")
-plt.ylabel("Average transactions in weeks 40–78")
+plt.xlabel("Number of transactions in weeks 1-39")
+plt.ylabel("Average transactions in weeks 40-78")
 plt.title("Figure 3: Conditional Expectation of Future Transactions for CDNOW Data")
 plt.legend()
 plt.savefig(os.path.join(figure_path, "Figure3_bi_conditional_expectation.png"), dpi=300, bbox_inches='tight')

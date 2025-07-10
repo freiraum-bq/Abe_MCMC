@@ -1,21 +1,5 @@
 """mcmc.py
-Python re-implementation of the hierarchical-Bayes Pareto/NBD variant from
-Abe (2009):
-
-* Synthetic-data generator identical to `abe.GenerateData` from the original R
-  code.
-* Event-log → CBS helper (`elog2cbs`).
-* Vectorised latent-variable samplers (`draw_z`, `draw_tau`).
-* Full Metropolis-within-Gibbs sampler (`mcmc_draw_parameters_rfm_m`) that mirrors the
-  algorithm in Abe's Appendix A.1. No fancy back-end - NumPy + SciPy are fast
-  enough; PyMC is **optional** (only used for trace plotting later).
-
-The output roughly matches the R function: two dictionaries with draws for each
-chain.  Results are easy to stuff into an ArviZ `InferenceData` if desired.
-
-All times are measured in **weeks** (as in the R demo). The random-number flow
-is managed by a `numpy.random.Generator` passed around explicitly for
-reproducibility.
+Python extention of Abe 2009; inspired by / in analogy to Abe 2015
 """
 from __future__ import annotations
 

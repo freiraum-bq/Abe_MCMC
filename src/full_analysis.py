@@ -65,15 +65,15 @@ os.makedirs(figure_path, exist_ok=True)
 
 # Load Estimates
 # Bivariate
-with open(os.path.join(pickles_dir, "full_bi_m1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m1.pkl"), "rb") as f:
     bi_m1 = pickle.load(f)
-with open(os.path.join(pickles_dir, "full_bi_m2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_bi_m2.pkl"), "rb") as f:
     bi_m2 = pickle.load(f)
 
 # Trivariate
-with open(os.path.join(pickles_dir, "full_tri_m1.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_tri_m1.pkl"), "rb") as f:
     tri_m1 = pickle.load(f)
-with open(os.path.join(pickles_dir, "full_tri_m2.pkl"), "rb") as f:
+with open(os.path.join(pickles_dir, "ext_tri_m2.pkl"), "rb") as f:
     tri_m2 = pickle.load(f)
 
 # CBS data
