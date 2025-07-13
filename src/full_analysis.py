@@ -984,33 +984,37 @@ def level2_summary_trivar(draws: dict, label: str = "M1") -> pd.DataFrame:
     """
     # Convert list of per-chain arrays into a single 3D array
     lvl2 = np.stack(draws["level_2"], axis=0)
-    n_chain, n_draw, n_param = lvl2.shape
-
-    # keep first 3 rows (intercepts) and last 6 rows (Σ unique elements)
-    core = np.concatenate([lvl2[..., :3], lvl2[..., -6:]], axis=-1)  # (C, D, 9)
-
+    n_chain, n_draw, P = lvl2.shape
+    # Determine number of covariates: each adds 3 β parameters
+    n_cov = max((P - 9) // 3, 0)
+    # Build dynamic parameter names: three intercepts, βs, then covariance elements
     param_names = [
         "log_lambda (intercept)",
         "log_mu (intercept)",
-        "log_eta (intercept)",
+        "log_eta (intercept)"
+    ]
+    for i in range(n_cov):
+        param_names.extend([
+            f"beta_lambda[{i}]",
+            f"beta_mu[{i}]",
+            f"beta_eta[{i}]"
+        ])
+    param_names.extend([
         "var_log_lambda",
         "cov_log_lambda_mu",
         "cov_log_lambda_eta",
         "var_log_mu",
         "cov_log_mu_eta",
-        "var_log_eta",
-    ]
-
+        "var_log_eta"
+    ])
     da = xr.DataArray(
-        core,
+        lvl2,
         dims=("chain", "draw", "param"),
         coords={"param": param_names},
     )
-
     idata = az.from_dict(posterior={"level_2": da})
     summary = az.summary(idata, var_names=["level_2"], round_to=4)
-
-    # make row labels identical to previous style
+    # Align row labels with parameter naming
     summary.index = [f"level_2[{p}]" for p in param_names]
     return summary
 
@@ -1027,4 +1031,4 @@ print(summary_3pII)
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     summary_3pI.to_excel(writer, sheet_name="Tri_Convergence_M1", index=True)
     summary_3pII.to_excel(writer, sheet_name="Tri_Convergence_M2", index=True)
-
+# ------------------------------------------------------------------
