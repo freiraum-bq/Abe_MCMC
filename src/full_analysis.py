@@ -842,35 +842,54 @@ plt.show()
 
 # %% 11. Traceplots
 # -- 11. Traceplots
-# Path to save the figures:
 plots_path = os.path.join(save_figures_path, "SamplingPlots")
 
-# Convert Bivariate M1 to InferenceData
+# Convert Bivariate M1 to InferenceData with full dims
+lvl2_bi_m1 = np.array(bi_m1["level_2"])
 idata_bi_m1 = az.from_dict(
-    posterior={"level_2": np.array(bi_m1["level_2"])},
-    coords={"param": param_names_bi_m1},
-    dims={"level_2": ["param"]}
+    posterior={"level_2": lvl2_bi_m1},
+    coords={
+        "chain": np.arange(lvl2_bi_m1.shape[0]),
+        "draw":  np.arange(lvl2_bi_m1.shape[1]),
+        "param": param_names_bi_m1
+    },
+    dims={"level_2": ["chain", "draw", "param"]}
 )
 
-# Convert Bivariate M2 to InferenceData
+# Convert Bivariate M2 to InferenceData with full dims
+lvl2_bi_m2 = np.array(bi_m2["level_2"])
 idata_bi_m2 = az.from_dict(
-    posterior={"level_2": np.array(bi_m2["level_2"])},
-    coords={"param": param_names_bi_m2},
-    dims={"level_2": ["param"]}
+    posterior={"level_2": lvl2_bi_m2},
+    coords={
+        "chain": np.arange(lvl2_bi_m2.shape[0]),
+        "draw":  np.arange(lvl2_bi_m2.shape[1]),
+        "param": param_names_bi_m2
+    },
+    dims={"level_2": ["chain", "draw", "param"]}
 )
 
-# Convert Trivariate M1 to InferenceData
+# Convert Trivariate M1 to InferenceData with full dims
+lvl2_tri_m1 = np.array(tri_m1["level_2"])
 idata_tri_m1 = az.from_dict(
-    posterior={"level_2": np.array(tri_m1["level_2"])},
-    coords={"param": param_names_tri_m1},
-    dims={"level_2": ["param"]}
+    posterior={"level_2": lvl2_tri_m1},
+    coords={
+        "chain": np.arange(lvl2_tri_m1.shape[0]),
+        "draw":  np.arange(lvl2_tri_m1.shape[1]),
+        "param": param_names_tri_m1
+    },
+    dims={"level_2": ["chain", "draw", "param"]}
 )
 
-# Convert Trivariate M2 to InferenceData
+# Convert Trivariate M2 to InferenceData with full dims
+lvl2_tri_m2 = np.array(tri_m2["level_2"])
 idata_tri_m2 = az.from_dict(
-    posterior={"level_2": np.array(tri_m2["level_2"])},
-    coords={"param": param_names_tri_m2},
-    dims={"level_2": ["param"]}
+    posterior={"level_2": lvl2_tri_m2},
+    coords={
+        "chain": np.arange(lvl2_tri_m2.shape[0]),
+        "draw":  np.arange(lvl2_tri_m2.shape[1]),
+        "param": param_names_tri_m2
+    },
+    dims={"level_2": ["chain", "draw", "param"]}
 )
 
 # Traceplots
@@ -880,11 +899,16 @@ for idata, label in [
     (idata_tri_m1, "HB Trivariate M1"),
     (idata_tri_m2, "HB Trivariate M2"),
 ]:
-    az.plot_trace(idata, var_names=["level_2"], figsize=(12, max(4, len(idata.posterior["level_2"].coords["param"]) * 1.5)))
+    plt.close('all')
+    n_params   = len(idata.posterior["level_2"].coords["param"])
+    fig_height = max(4, n_params * 1.5)
+    fig_width  = max(12, n_params * 2)   # keep width ≥ height for readability
+    az.plot_trace(idata, var_names=["level_2"], figsize=(fig_width, fig_height))
     plt.suptitle(f"Traceplot - {label}", fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(os.path.join(plots_path, f"Traceplot_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
+    plt.close()
 
 # Autocorrelation plots
 for idata, label in [
@@ -893,11 +917,13 @@ for idata, label in [
     (idata_tri_m1, "HB Trivariate M1"),
     (idata_tri_m2, "HB Trivariate M2"),
 ]:
+    plt.close('all')
     az.plot_autocorr(idata, var_names=["level_2"], figsize=(12, max(4, len(idata.posterior["level_2"].coords["param"]) * 1.5)))
     plt.suptitle(f"Autocorrelation - {label}", fontsize=14)
     plt.tight_layout()
     plt.savefig(os.path.join(plots_path, f"Autocorr_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
+    plt.close()
 
 # Posterior distributions
 for idata, label in [
@@ -906,6 +932,7 @@ for idata, label in [
     (idata_tri_m1, "HB Trivariate M1"),
     (idata_tri_m2, "HB Trivariate M2"),
 ]:
+    plt.close('all')
     n_params = len(idata.posterior["level_2"].coords["param"])
     az.plot_posterior(
         idata,
@@ -919,10 +946,11 @@ for idata, label in [
     plt.subplots_adjust(hspace=0.5)
     plt.savefig(os.path.join(plots_path, f"PosteriorDist_{label.replace(' ', '_')}.png"), dpi=300, bbox_inches='tight')
     plt.show()
+    plt.close()
 # ------------------------------------------------------------------
 
-# %% 10. BIVARIATE Convergence 
-# -- 10. BIVARIATE Convergence 
+# %% 12. BIVARIATE Convergence 
+# -- 12. BIVARIATE Convergence 
 
 def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
     # ------------------------------------------------------------------
@@ -972,8 +1000,8 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_m2.to_excel(writer, sheet_name="Bi_Convergence_M2", index=True)
 # ------------------------------------------------------------------
 
-# %% 11. TRIVARIATE Convergence
-# -- 11. TRIVARIATE Convergence
+# %% 13. TRIVARIATE Convergence
+# -- 13. TRIVARIATE Convergence
 
 def level2_summary_trivar(draws: dict, label: str = "M1") -> pd.DataFrame:
     """
