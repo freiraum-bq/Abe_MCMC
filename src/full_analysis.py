@@ -326,7 +326,6 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 
 # %% 5. Model Fit Evaluation Bivariate Models
 # -- 5. Model Fit Evaluation Bivariate Models --
-# -- 5. Model Fit Evaluation --
 # BI VARIATE MODEL
 mean_lambda_m1 = post_mean_lambdas(bi_m1)
 mean_mu_m1     = post_mean_mus(bi_m1)
@@ -335,6 +334,10 @@ mean_mu_m2     = post_mean_mus(bi_m2)
 
 cbs["xstar_bi_m1_pred"] = (mean_lambda_m1/mean_mu_m1) * (1 - np.exp(-mean_mu_m1 * t_star))
 cbs["xstar_bi_m2_pred"] = (mean_lambda_m2/mean_mu_m2) * (1 - np.exp(-mean_mu_m2 * t_star))
+
+# Compute marginal log-likelihood for bivariate models
+ll_bi_m1 = chain_total_loglik(bi_m1["level_1"], cbs)
+ll_bi_m2 = chain_total_loglik(bi_m2["level_1"], cbs)
 
 # Prepare weekly index and counts
 first_date = cdnowElog["date"].min()
@@ -354,7 +357,6 @@ repeat_txns = cdnowElog_sorted[cdnowElog_sorted["txn_order"] >= 1]
 weekly_actual = (
     repeat_txns.groupby("week")["cust"].count()
     .reindex(range(1, max_week+1), fill_value = 0))
-
 # -----------------------------------------------------------------------
 
 # TRI VARIATE MODEL
@@ -366,6 +368,12 @@ birth_week = (
 )
 weeks_cal_mask = (times >= 1)  & (times <= 39)
 weeks_val_mask = (times >= 40) & (times <= 78)
+
+# Compute marginal log-likelihood for trivariate models
+ll_tri_m1 = chain_total_loglik(tri_m1["level_1"], cbs_df)
+ll_tri_m2 = chain_total_loglik(tri_m2["level_1"], cbs_df)
+print(f"Marginal log-likelihood Trivariate M1: {ll_tri_m1}")
+print(f"Marginal log-likelihood Trivariate M2: {ll_tri_m2}")
 
 # -----------------------------------------------------------------------
 # 3) Metric helper ------------------------------------------------------
@@ -437,26 +445,31 @@ stats_tri2 = compute_metrics(tri_m2, "Trivariate HB-M2")
 # 5) Assemble two-column Table 2 ----------------------------------------
 table2 = pd.DataFrame({
     stats_bi1["label"]: [
+        ll_bi_m1,
         stats_bi1["corr_val"], stats_bi1["corr_cal"],
-        stats_bi1["mse_val"],  stats_bi1["mse_cal"],
+        stats_bi1["mse_val"], stats_bi1["mse_cal"],
         stats_bi1["mape_val"], stats_bi1["mape_cal"], stats_bi1["mape_pool"]
     ],
     stats_bi2["label"]: [
+        ll_bi_m2,
         stats_bi2["corr_val"], stats_bi2["corr_cal"],
-        stats_bi2["mse_val"],  stats_bi2["mse_cal"],
+        stats_bi2["mse_val"], stats_bi2["mse_cal"],
         stats_bi2["mape_val"], stats_bi2["mape_cal"], stats_bi2["mape_pool"]
     ],
     stats_tri1["label"]: [
+        ll_tri_m1,
         stats_tri1["corr_val"], stats_tri1["corr_cal"],
-        stats_tri1["mse_val"],  stats_tri1["mse_cal"],
+        stats_tri1["mse_val"], stats_tri1["mse_cal"],
         stats_tri1["mape_val"], stats_tri1["mape_cal"], stats_tri1["mape_pool"]
     ],
     stats_tri2["label"]: [
+        ll_tri_m2,
         stats_tri2["corr_val"], stats_tri2["corr_cal"],
-        stats_tri2["mse_val"],  stats_tri2["mse_cal"],
+        stats_tri2["mse_val"], stats_tri2["mse_cal"],
         stats_tri2["mape_val"], stats_tri2["mape_cal"], stats_tri2["mape_pool"]
     ]
 }, index=[
+    "Marginal log-likelihood",
     "Correlation (Validation)", "Correlation (Calibration)",
     "MSE (Validation)",         "MSE (Calibration)",
     "MAPE (Validation)",        "MAPE (Calibration)", "MAPE (Pooled)"
@@ -467,7 +480,8 @@ row_order = [
     "Correlation (Validation)", "Correlation (Calibration)", "",
     "MSE (Validation)",         "MSE (Calibration)",         "",
     "Aggregate measure", "Time-series MAPE (%)",
-    "MAPE (Validation)",        "MAPE (Calibration)",        "MAPE (Pooled)"
+    "MAPE (Validation)",        "MAPE (Calibration)",        "MAPE (Pooled)",
+        "Marginal log-likelihood"
 ]
 table2 = table2.reindex(row_order)
 
@@ -479,8 +493,8 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     table2_disp.to_excel(writer, sheet_name="ModelFit_Table", index=False, float_format="%.2f")
 # ------------------------------------------------------------------
 
-# %% 7. Weekly-Series Tracking
-# -- 7. Weekly-Series Tracking --
+# %% 6. Weekly-Series Tracking
+# -- 6. Weekly-Series Tracking --
 cum_actual = weekly_actual.cumsum()
 
  # --- Birth‑aligned Pareto/NBD baseline (MLE) -----------------
@@ -640,8 +654,8 @@ plt.savefig(os.path.join(plots_path, "Weekly_Tracking.png"), dpi=300, bbox_inche
 plt.show()
 # ------------------------------------------------------------------
 
-# %% 8. Conditional expectation of future transactions
-# -- 8. Conditional expectation of future transactions
+# %% 7. Conditional expectation of future transactions
+# -- 7. Conditional expectation of future transactions
 
 # Group by number of calibration transactions (0–7+)
 # Use analytical expectations, with different formulas for Pareto/NBD (M1) and HB (M2)
@@ -732,8 +746,8 @@ plt.savefig(os.path.join(plots_path, "Conditional_Expectation.png"), dpi=300, bb
 plt.show()
 # ------------------------------------------------------------------
 
-# %% 9. Scatterplot - Prediction of all models
-# -- 9. Scatterplot - Prediction of all models
+# %% 8. Scatterplot - Prediction of all models
+# -- 8. Scatterplot - Prediction of all models
 import seaborn as sns
 sns.set(style="whitegrid")
 
@@ -787,8 +801,8 @@ plt.tight_layout()
 plt.savefig(os.path.join(plots_path, "Scatter_Prediction.png"), dpi=300, bbox_inches='tight')
 plt.show()
 
-# %% 10. Alive vs Churned customers
-# -- 10. Alive vs Churned customers
+# %% 9. Alive vs Churned customers
+# -- 9. Alive vs Churned customers
 # ------------------------------------------------------------------
 # Alive vs. Churned – four HB models in one 2×2 barplot grid
 # ------------------------------------------------------------------
@@ -840,8 +854,8 @@ plt.savefig(os.path.join(plots_path, "Alive_vs_Churned.png"),
 plt.show()
 # -------------------------------------------------------------------
 
-# %% 11. Traceplots
-# -- 11. Traceplots
+# %% 10. Traceplots
+# -- 10. Traceplots
 plots_path = os.path.join(save_figures_path, "SamplingPlots")
 
 # Convert Bivariate M1 to InferenceData with full dims
@@ -949,8 +963,8 @@ for idata, label in [
     plt.close()
 # ------------------------------------------------------------------
 
-# %% 12. BIVARIATE Convergence 
-# -- 12. BIVARIATE Convergence 
+# %% 11. BIVARIATE Convergence 
+# -- 11. BIVARIATE Convergence 
 
 def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
     # ------------------------------------------------------------------
@@ -1000,8 +1014,8 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_m2.to_excel(writer, sheet_name="Bi_Convergence_M2", index=True)
 # ------------------------------------------------------------------
 
-# %% 13. TRIVARIATE Convergence
-# -- 13. TRIVARIATE Convergence
+# %% 12. TRIVARIATE Convergence
+# -- 12. TRIVARIATE Convergence
 
 def level2_summary_trivar(draws: dict, label: str = "M1") -> pd.DataFrame:
     """
@@ -1060,3 +1074,5 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_3pI.to_excel(writer, sheet_name="Tri_Convergence_M1", index=True)
     summary_3pII.to_excel(writer, sheet_name="Tri_Convergence_M2", index=True)
 # ------------------------------------------------------------------
+
+# %%

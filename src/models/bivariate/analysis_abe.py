@@ -709,9 +709,9 @@ ax.tick_params(axis='x', colors='#444444')
 plt.tight_layout()
 plt.savefig(os.path.join(figure_path, "Alive_vs_Churned.png"), dpi=300, bbox_inches='tight')
 plt.show()
-# -------------------------------------------------------------------
-# 8. Visualize the posterior distributions and traceplots for both models
-# -------------------------------------------------------------------
+
+# %% 8. Posterior distributions and Traceplots
+# -- 8. Posterior distributions and Traceplots 
 # Convert M1 to InferenceData
 idata_m1 = az.from_dict(
     posterior={"level_2": np.array(draws_m1["level_2"])},  # shape: (chains, draws, dims)
@@ -745,11 +745,49 @@ plt.suptitle("Traceplot - M1", fontsize=14)
 plt.tight_layout()
 plt.show()
 
+
 az.plot_trace(idata_m2, var_names=["level_2"], figsize=(12, 10))
 plt.suptitle("Traceplot - M2", fontsize=14)
 plt.tight_layout()
 plt.show()
 
+# %% 8.X Posterior Densities for all parameters in a single plot
+def plot_posteriors(idata, model_name):
+    plt.figure(figsize=(8,6))
+    for param in idata.posterior["level_2"].coords["param"].values:
+        data = idata.posterior["level_2"].sel(param=param).values.flatten()
+        sns.kdeplot(data, label=param, fill=True)
+    plt.title(f"Posterior Distributions - {model_name}")
+    plt.xlabel("Value")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(figure_path, f"Posteriors_{model_name}.png"), dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+plot_posteriors(idata_m1, "M1")
+plot_posteriors(idata_m2, "M2")
+
+# %% 8.Y Overlay trace plots for all parameters in a single plot
+def plot_traces(idata, model_name):
+    plt.figure(figsize=(8,6))
+    for param in idata.posterior["level_2"].coords["param"].values:
+        samples = idata.posterior["level_2"].sel(param=param).values.flatten()
+        plt.plot(samples, label=param, linewidth=0.5)
+    plt.title(f"Trace Plots - {model_name}")
+    plt.xlabel("Sample")
+    plt.ylabel("Value")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(figure_path, f"Traces_{model_name}.png"), dpi=300, bbox_inches="tight")
+    plt.show()
+
+plot_traces(idata_m1, "M1")
+plot_traces(idata_m2, "M2")
+
+# %% 9. Summary and convergence diagnostics
+# -- 9. Summary and convergence diagnostics
 # 9. Summary and convergence diagnostics
 # Traceplot – M1 and M2
 az.summary(idata_m1, var_names=["level_2"], round_to=4)
@@ -769,10 +807,9 @@ az.plot_autocorr(idata_m2, var_names=["level_2"], figsize=(12, 10))
 plt.suptitle("Autocorrelation - M2", fontsize=14)
 plt.tight_layout()
 plt.show()
+# %% 10. Autocorrelation – M1 vs. M2
+# -- 10. Autocorrelation – M1 vs. M2
 
-# -------------------------------------------------------------------
-# 10. Autocorrelation – M1 vs. M2
-# -------------------------------------------------------------------
 # Get number of parameters (last dimension)
 n_params_m1 = idata_m1.posterior["level_2"].shape[-1]
 n_params_m2 = idata_m2.posterior["level_2"].shape[-1]
@@ -803,3 +840,56 @@ plt.suptitle("Posterior Distributions - M2", fontsize=16, y=1.02)
 plt.subplots_adjust(hspace=0.5)
 plt.show()
 # -------------------------------------------------------------------
+
+# %% 12. BIVARIATE Convergence 
+# -- 12. BIVARIATE Convergence 
+import xarray as xr
+
+def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
+    # ------------------------------------------------------------------
+    # 1) ensure NumPy array
+    # ------------------------------------------------------------------
+    lvl2 = np.asarray(draws["level_2"])    # list → ndarray
+    if lvl2.ndim == 2:                     # single chain: (draws, P)
+        lvl2 = lvl2[None, ...]             # → (1, draws, P)
+
+    chains, draws_n, P = lvl2.shape
+    # ------------------------------------------------------------------
+    # 2) build dynamic parameter names (unchanged below)
+    # ------------------------------------------------------------------
+    n_cov = max((P - 5) // 2, 0)
+    param_names = ["log_lambda (intercept)", "log_mu (intercept)"]
+    for i in range(n_cov):
+        param_names.extend([f"beta_lambda[{i}]", f"beta_mu[{i}]"])
+    param_names.extend(
+        ["var_log_lambda", "cov_log_lambda_mu", "var_log_mu"]
+    )
+
+    da = xr.DataArray(
+        lvl2,
+        dims=("chain", "draw", "param"),
+        coords={"param": param_names},
+    )
+
+    summary = az.summary(
+        az.from_dict(posterior={"level_2": da}),
+        var_names=["level_2"],
+        round_to=4,
+    )
+    summary.index = [f"level_2[{p}]" for p in param_names]
+    return summary
+
+summary_m1 = level2_summary(draws_m1, label="m1")
+print(summary_m1)
+
+# Always compute and print Bivariate M2 convergence
+summary_m2 = level2_summary(draws_m2, label="m2")
+print("\n" + "-" * 60)
+print(summary_m2)
+
+# Save bivariate convergence summaries to separate sheets
+with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+    summary_m1.to_excel(writer, sheet_name="Convergence_M1", index=True)
+    summary_m2.to_excel(writer, sheet_name="Convergence_M2", index=True)
+# ------------------------------------------------------------------
+# %%
