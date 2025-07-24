@@ -1,22 +1,19 @@
-"""pareto_abe.py
+"""
 Python re-implementation of the hierarchical-Bayes Pareto/NBD variant from
-Abe (2009):
+Abe (2009)
 
 * Synthetic-data generator identical to `abe.GenerateData` from the original R
   code.
 * Event-log → CBS helper (`elog2cbs`).
 * Vectorised latent-variable samplers (`draw_z`, `draw_tau`).
 * Full Metropolis-within-Gibbs sampler (`mcmc_draw_parameters`) that mirrors the
-  algorithm in Abe's Appendix A.1. No fancy back-end - NumPy + SciPy are fast
-  enough; PyMC is **optional** (only used for trace plotting later).
-
-The output roughly matches the R function: two dictionaries with draws for each
-chain.  Results are easy to stuff into an ArviZ `InferenceData` if desired.
+  algorithm in Abe's Appendix A.1. 
 
 All times are measured in **weeks** (as in the R demo). The random-number flow
 is managed by a `numpy.random.Generator` passed around explicitly for
 reproducibility.
 """
+
 from __future__ import annotations
 
 # -----------------------------------------------------------------------------
@@ -73,7 +70,7 @@ class CustomerCBS:
 # -----------------------------------------------------------------------------
 
 def elog2cbs(elog: pd.DataFrame, T_cal: float) -> pd.DataFrame:
-    """Create RFM‑style summary statistics from an event log.
+    """Create RFM-style summary statistics from an event log.
 
     Parameters
     ----------
@@ -101,18 +98,18 @@ def generate_pareto_abe(
     covars: Optional[np.ndarray] = None,
     seed: Optional[int] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Simulate customer transactions under Abe (2009).
+    """Simulate customer transactions under Abe (2009).
 
     Returns
     -------
-    cbs : calibration‑period summary statistics plus true parameters
-    elog : full event log (cust, t, date is omitted – just weeks)
+    cbs : calibration-period summary statistics plus true parameters
+    elog : full event log (cust, t, date is omitted - just weeks)
     """
     rng = np.random.default_rng(seed)
 
     beta = np.asarray(beta, dtype=float)
     K, D = beta.shape
-    assert D == 2, "beta must have two columns (log‑lambda, log‑mu)"
+    assert D == 2, "beta must have two columns (log-lambda, log-mu)"
 
     # --- covariates X_i ------------------------------------------------------
     if covars is None:
@@ -237,7 +234,7 @@ def _draw_level_2(
     hyper: Dict[str, Any],
     rng: np.random.Generator,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Posterior draw for β (K×2) and Σ (2×2) in a normal regression."""
+    """Posterior draw for β (Kx2) and Σ (2x2) in a normal regression."""
     Y = np.column_stack([log_lambda, log_mu])  # (N, 2)
 
     A0 = hyper["A_0"]  # (K, K) precision

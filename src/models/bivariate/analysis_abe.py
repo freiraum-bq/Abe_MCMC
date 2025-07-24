@@ -1,6 +1,8 @@
-# ------------------------------------------------------------------
+""" ------------------------------------------------------------------
 # this script reproduces the analysis from Abe (2009)
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------ """
+# For the Report, the sample and Convergece Diagnostic for Bi M1 are produced in this script --> # 10.
+
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
 # ------------------------------------------------------------------
@@ -198,9 +200,8 @@ print(summary_m2)
 # ------------------------------------------------------------------
 # %% 5. Construct Table 2: Model Fit Evaluation
 # -- 5. Construct Table 2: Model Fit Evaluation --
-# ------------------------------------------------------------------
-# ------ Some prerequisites ------
 
+# ------ Some prerequisites ------
 # Prepare weekly index and counts
 first_date = cdnowElog["date"].min()
 cdnowElog["week"] = ((cdnowElog["date"] - first_date) // pd.Timedelta("7D")).astype(int) + 1
@@ -389,13 +390,14 @@ table2_formatted = table2.reset_index().rename(columns={"index": ""})
 
 # ---- non‑coloured Table 2 display and save -------------------------------
 table2_disp = _fmt(table2_formatted, 2)
-print("\nTable 2. Model Fit for CDNOW Data")
+print("\nTable 2. Model Fit for CDNOW Data")
 display(table2_disp)
 
 # Save to Excel
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table2_formatted.to_excel(writer, sheet_name="Table 2", index=False, float_format="%.2f")
 # ------------------------------------------------------------------
+
 # %% 6. Construct Table 3: Estimation Results
 # -- 6. Construct Table 3: Estimation Results --
 corr_m1 = extract_correlation(np.array(draws_m1["level_2"][0]))
@@ -463,14 +465,13 @@ display(_fmt(table3_combined, 2))
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table3_combined.to_excel(writer, sheet_name="Table 3")
 # ------------------------------------------------------------------
+
 # %% 7. Construct Table 4: Customer-Level Statistics
 # -- 7. Construct Table 4: Customer-Level Statistics --
-# -------------------------------------------------------------------
+
 # Generate posterior predictive draws for validation period
 xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
 xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
-
-
 
 table4 = compute_table4(draws_m2, xstar_m2_draws)
 
@@ -480,8 +481,10 @@ display(table4)
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table4.to_excel(writer, sheet_name="Table 4")
 # -------------------------------------------------------------------
+
 # %% 8. Figures 2–5: Reproduce Abe (2009) plots
 # -- 8. Figures 2–5: Reproduce Abe (2009) plots --
+
 # -------------------------------------------------------------------
 # Figure 2: Weekly cumulative repeat transactions
 # -------------------------------------------------------------------
@@ -579,8 +582,8 @@ plt.figure(figsize=(8,5))
 plt.plot(cond_df.index, cond_df["Actual"], '-', color='tab:blue', linewidth=2, label="Actual")
 plt.plot(cond_df.index, cond_df["Pareto/NBD"], marker='*', linestyle='--', color='tab:orange', linewidth=2, label="Pareto/NBD")
 plt.plot(cond_df.index, cond_df["HB"], marker='x', linestyle=':', color='tab:green', linewidth=2, label="HB")
-plt.xlabel("Number of transactions in weeks 1–39")
-plt.ylabel("Average transactions in weeks 40–78")
+plt.xlabel("Number of transactions in weeks 1-39")
+plt.ylabel("Average transactions in weeks 40-78")
 plt.title("Figure 3: Conditional Expectation of Future Transactions for CDNOW Data")
 plt.legend()
 plt.savefig(os.path.join(figure_path, "Figure3_conditional_expectation.png"), dpi=300, bbox_inches='tight')
@@ -602,6 +605,7 @@ plt.title("Figure 4: Scatter Plot of Posterior Means of λ and μ for CDNOW Data
 plt.savefig(os.path.join(figure_path, "Figure4_scatter_lambda_mu.png"),
             dpi=300, bbox_inches="tight")
 plt.show()
+
 # -------------------------------------------------------------------
 # Figure 5: Histogram of correlation between log(λ) and log(μ)
 # -------------------------------------------------------------------
@@ -628,6 +632,7 @@ plt.savefig(os.path.join(figure_path, "Figure5_corr_histogram.png"),
             dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
+
 # %% 9. Additional visualizations and diagnostics 
 # -- 9. Additional visualizations and diagnostics --
 # -------------------------------------------------------------------
@@ -680,7 +685,6 @@ bars = ax.bar(labels, counts, color=colors, width=0.5)
 ax.set_ylabel("Number of customers", fontsize=11)
 ax.set_title("Predicted Alive vs. Churned\n(Last Draw of MCMC Chain)", fontsize=13)
 
-
 # Annotate each bar with its value
 for bar in bars:
     height = bar.get_height()
@@ -709,9 +713,11 @@ ax.tick_params(axis='x', colors='#444444')
 plt.tight_layout()
 plt.savefig(os.path.join(figure_path, "Alive_vs_Churned.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# -------------------------------------------------------------------
 
-# %% 8. Posterior distributions and Traceplots
-# -- 8. Posterior distributions and Traceplots 
+# %% 10 Posterior Densities & Traceplots
+# -- 10 Posterior Densities & Traceplots
+
 # Convert M1 to InferenceData
 idata_m1 = az.from_dict(
     posterior={"level_2": np.array(draws_m1["level_2"])},  # shape: (chains, draws, dims)
@@ -738,20 +744,9 @@ idata_m2 = az.from_dict(
     ]},
     dims={"level_2": ["param"]}
 )
-
-# Plot traceplots for both models
-az.plot_trace(idata_m1, var_names=["level_2"], figsize=(12, 6))
-plt.suptitle("Traceplot - M1", fontsize=14)
-plt.tight_layout()
-plt.show()
-
-
-az.plot_trace(idata_m2, var_names=["level_2"], figsize=(12, 10))
-plt.suptitle("Traceplot - M2", fontsize=14)
-plt.tight_layout()
-plt.show()
-
-# %% 8.X Posterior Densities for all parameters in a single plot
+# ------------------------------------
+# Posteriors Plots
+# ------------------------------------
 def plot_posteriors(idata, model_name):
     plt.figure(figsize=(8,6))
     for param in idata.posterior["level_2"].coords["param"].values:
@@ -765,11 +760,12 @@ def plot_posteriors(idata, model_name):
     plt.savefig(os.path.join(figure_path, f"Posteriors_{model_name}.png"), dpi=300, bbox_inches="tight")
     plt.show()
 
-
 plot_posteriors(idata_m1, "M1")
 plot_posteriors(idata_m2, "M2")
 
-# %% 8.Y Overlay trace plots for all parameters in a single plot
+# ------------------------------------
+# Traceplots
+# ------------------------------------
 def plot_traces(idata, model_name):
     plt.figure(figsize=(8,6))
     for param in idata.posterior["level_2"].coords["param"].values:
@@ -785,10 +781,11 @@ def plot_traces(idata, model_name):
 
 plot_traces(idata_m1, "M1")
 plot_traces(idata_m2, "M2")
+# -------------------------------------------------------------------
 
-# %% 9. Summary and convergence diagnostics
-# -- 9. Summary and convergence diagnostics
-# 9. Summary and convergence diagnostics
+# %% 11. Summary and convergence diagnostics
+# -- 11. Summary and convergence diagnostics
+
 # Traceplot – M1 and M2
 az.summary(idata_m1, var_names=["level_2"], round_to=4)
 
@@ -807,8 +804,8 @@ az.plot_autocorr(idata_m2, var_names=["level_2"], figsize=(12, 10))
 plt.suptitle("Autocorrelation - M2", fontsize=14)
 plt.tight_layout()
 plt.show()
-# %% 10. Autocorrelation – M1 vs. M2
-# -- 10. Autocorrelation – M1 vs. M2
+# %% 12. Autocorrelation – M1 vs. M2
+# -- 12. Autocorrelation – M1 vs. M2
 
 # Get number of parameters (last dimension)
 n_params_m1 = idata_m1.posterior["level_2"].shape[-1]
@@ -841,8 +838,9 @@ plt.subplots_adjust(hspace=0.5)
 plt.show()
 # -------------------------------------------------------------------
 
-# %% 12. BIVARIATE Convergence 
-# -- 12. BIVARIATE Convergence 
+# %% 13. BIVARIATE Convergence 
+# -- 13. BIVARIATE Convergence 
+
 import xarray as xr
 
 def level2_summary(draws: dict, label: str = "m1") -> pd.DataFrame:
@@ -892,4 +890,3 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_m1.to_excel(writer, sheet_name="Convergence_M1", index=True)
     summary_m2.to_excel(writer, sheet_name="Convergence_M2", index=True)
 # ------------------------------------------------------------------
-# %%

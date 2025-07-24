@@ -1,3 +1,6 @@
+"""
+This script converts the Huggingface dataset form elog to CBS, and does some datacleaning (for customer characteristics)
+"""
 # %% 1. Import libraries & set up project root
 # -- 1. Import libraries & set up project root --
 import os
@@ -115,5 +118,3 @@ cbs_merge_path = os.path.join(output_dir, "cdnow_fullCBS.csv")
 df_cbs__full_customers.to_csv(cbs_merge_path, index=False)
 print(f"Saved CBS with customer demographics to {cbs_merge_path}")
 # ------------------------------------------------------------------
-
-# %%

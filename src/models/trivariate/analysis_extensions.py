@@ -1,3 +1,6 @@
+"""------------------------------------------------------------------
+# this script is the analysis for the trivaiate model (Abe 2015) (script is (to some extend) in analogy to bivariate analysis)
+# ------------------------------------------------------------------ """
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
 import os
@@ -214,7 +217,6 @@ stats_1 = compute_metrics(draws_3pII, "HB RFM (+ gender & age)")
 # print("Raw stats M1:", stats_0)
 # print("Raw stats M2:", stats_1)
 
-
 # %% 4. Figure 2 – Weekly cumulative repeat transactions
 # -- 4. Figure 2 – Weekly cumulative repeat transactions
 
@@ -279,6 +281,7 @@ plt.legend()
 plt.tight_layout()
 plt.savefig(os.path.join(figure_path, "Figure2_tri_weekly_tracking.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# -------------------------------------------------------------------------
 
 # %% 5. Scatterplot - Predictions of both models
 # -- 5. Scatterplot - Predictions of both models
@@ -317,6 +320,7 @@ for ax in axes:
 plt.tight_layout()
 plt.savefig(os.path.join(figure_path, "Scatter_tri_M1_M2.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# -------------------------------------------------------------------------
 
 # %% 6. Alive vs churned customers
 # -- 6. Alive vs churned customers
@@ -339,7 +343,6 @@ bars = ax.bar(labels, counts, color=colors, width=0.5)
 # Set axis labels and title
 ax.set_ylabel("Number of customers", fontsize=11)
 ax.set_title("Predicted Alive vs. Churned\n(Last Draw of MCMC Chain)", fontsize=13)
-
 
 # Annotate each bar with its value
 for bar in bars:
@@ -369,6 +372,7 @@ ax.tick_params(axis='x', colors='#444444')
 plt.tight_layout()
 plt.savefig(os.path.join(figure_path, "Alive_vs_Churned_tri.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# -------------------------------------------------------------------------
 
 # %% 7. Poserior distribution and Traceplots
 # -- 7. Poserior distribution and Traceplots

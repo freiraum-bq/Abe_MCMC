@@ -1,9 +1,10 @@
-# ------------------------------------------------------------------
-# --------------- this script contains -----------------------------
-# --------- the analysis on the CDNOW dataset ----------------------
-# ------- with both bivariate and trivariate models ----------------
-# ------------------------------------------------------------------
-# -----------------------------------------------------------------
+'''-------------------------------------------------------------- +
+# --------------- this script contains --------------------------- +
+# --------- the analysis on the CDNOW dataset --------------------- +
+# ------- with both bivariate and trivariate models -------------- +
+# --------------------------------------------------------------- +
+'''
+# Most of the Report is based off of this script; except convergence for Bi M1
 
 # %% 1. Import necessary libraries
 # -- 1. Import necessary libraries --
@@ -46,7 +47,6 @@ from src.models.utils.analysis_display_helper import _fmt
 save_figures_path = os.path.join(project_root, "outputs", "figures", "x_comparison_four_models")
 plots_path = os.path.join(save_figures_path, "plots")
 os.makedirs(plots_path, exist_ok=True)
-
 # ---------------------------------------------------------------------
 
 # %% 2. Load estimated parameters, data and set file path
@@ -133,7 +133,7 @@ display(table1_stats)
 # Save the DataFrame to the Excel file
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="w") as writer:
     table1_stats.to_excel(writer, sheet_name="Table_1_DescriptStats", index=True)
-
+# -------------------------------------------------
 
 # %% 4. Posterior Summary
 # -- 4. Posterior Summary --
@@ -264,7 +264,6 @@ summary_tri_m2.index = [
     "sigma_λ_η = cov[log λ, log η]",
     "sigma_μ_η = cov[log μ, log η]",
 ] # type: ignore
-
 # ------------------------------------------------------------------
 
 # Compute posterior means of λ and μ
@@ -322,7 +321,7 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_bi_m2.to_excel(writer, sheet_name="PostSummary_BI_M2")
     summary_tri_m1.to_excel(writer, sheet_name="PostSummary_TRI_M1")
     summary_tri_m2.to_excel(writer, sheet_name="PostSummary_TRI_M2")
-
+# -------------------------------------------------
 
 # %% 5. Model Fit Evaluation Bivariate Models
 # -- 5. Model Fit Evaluation Bivariate Models --
@@ -800,6 +799,7 @@ for ax in axes:
 plt.tight_layout()
 plt.savefig(os.path.join(plots_path, "Scatter_Prediction.png"), dpi=300, bbox_inches='tight')
 plt.show()
+# -------------------------------------------------
 
 # %% 9. Alive vs Churned customers
 # -- 9. Alive vs Churned customers
@@ -1074,5 +1074,3 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
     summary_3pI.to_excel(writer, sheet_name="Tri_Convergence_M1", index=True)
     summary_3pII.to_excel(writer, sheet_name="Tri_Convergence_M2", index=True)
 # ------------------------------------------------------------------
-
-# %%

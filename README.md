@@ -2,7 +2,7 @@
 
 This repository contains a modular Python implementation of the hierarchical Bayesian Pareto/NBD model from Abe (2009), applied to the CDNOW dataset. It supports model estimation, customer-level forecasts, and evaluation of model fit and predictive accuracy, reproducing Tables 1–4 and key figures from the original paper.
 Furthermore, it contains the three parameter extension, suggested by Abe 2015. 
-Finally, it extends Abes analyis by incorporating more customer characteristics.
+Finally, it extends Abe's analysis by incorporating more customer characteristics for the CDNOW dataset as well as a comparison of the four models.
 
 ## Repository Structure
 
@@ -15,35 +15,35 @@ Abe_MCMC/
 │   ├── excel/                # Generated Excel summaries and tables
 │   ├── figures/              # Generated figures and plots
 │   │   ├── abe_replication/  # Plots for Abe 2009 replication
-│   │   ├── extention/        # Plots for extention / Bi & Tri seperately
+│   │   ├── extension/        # Plots for extension / Bi & Tri separately
 │   │   └── x_comparison_four_models/  # Plots for four model comparison
 │   └── pickles/              # Saved MCMC draws and model outputs
 ├── src/
 │   ├── data_processing/
-│   │   ├── cdnow_abe_covariates.py  # Adding covariates to Abe's dataset (1/10 of full)
-│   │   ├── cdnow_abe.py             # Extraction of original Abe dataset
-│   │   └── cdnow_full.py            # Processing the full CDNOW dataset
+│   │   ├── 1A_cdnow_fetchRaw_abe.py   # Extraction of original Abe dataset
+│   │   ├── 1B_cdnow_fetchRaw_full.py  # Processing the full CDNOW dataset
+│   │   ├── 2A_cdnow_elog2cbs_abe.py   # Convert Abe event log to CBS
+│   │   └── 2B_cdnow_elog2cbs_full.py  # Convert full event log to CBS
 │   ├── models/
 │   │   ├── bivariate/
-│   │   │   ├── analysis_abe.py          # Bivariate model analysis | Abe 2009 Replication
-│   │   │   ├── analysis_extension.py    # Bivariate model analysis | Extending with more customer characteristics
-│   │   │   ├── mcmc.py                  # Bivariate MCMC routines
-│   │   │   ├── run_mcmc_abe.py          # Script to run MCMC | Abe Replication
-│   │   │   └── run_mcmc_extension.py    # Script to run MCMC | Extension via customer characteristics
+│   │   │   ├── analysis_abe.py            # Bivariate model analysis | Abe 2009 Replication
+│   │   │   ├── analysis_extensions.py     # Bivariate model analysis | Extending with more customer characteristics
+│   │   │   ├── mcmc.py                    # Bivariate MCMC routines
+│   │   │   ├── run_mcmc_abe.py            # Script to run MCMC | Abe Replication
+│   │   │   └── run_mcmc_extensions.py     # Script to run MCMC | Extension via customer characteristics
 │   │   ├── trivariate/
-│   │   │   ├── analysis_extension.py      # Trivariate analysis MCMC routines
+│   │   │   ├── analysis_extensions.py     # Trivariate model analysis | Extension
 │   │   │   ├── mcmc.py                    # Trivariate MCMC routines
-│   │   │   └── run_mcmc_extension.py      # Script to run Trivariate MCMC
+│   │   │   └── run_mcmc_extensions.py     # Script to run Trivariate MCMC
 │   │   └── utils/
 │   │       ├── analysis_bi_dynamic.py     # Helper for generating parameter names and labels for bivariate hierarchical models with arbitrary covariates.
 │   │       ├── analysis_bi_helpers.py     # Functions for analysis
 │   │       ├── analysis_display_helper.py # Helper display function
 │   │       ├── analysis_tri_helpers.py    # Functions for analysis
 │   │       └── elog2cbs2param.py          # Converting Elog to CBS
-│   ├── full_analysis.ipynb   # Analysis for four models (Extention) (based on full_analysis.py )
-│   └── full_analysis.py      # Analysis for four models (Extention)
-├── README.md                 
-└── SETUP_REQUIREMENTS.md
+│   ├── full_analysis.ipynb   # Analysis for four models (Extension) (based on full_analysis.py)
+│   └── full_analysis.py      # Analysis for four models (Extension)
+└── README.md                 
 ```
 
 ## Prerequisites
@@ -55,6 +55,8 @@ Abe_MCMC/
   ```
 
 ## Usage
+### 0. .py scripts
+Scripts can be easily run in an interactive window; sometimes restart of VS Code is required due to bugs.
 
 ### 1. Data Preparation
 
@@ -140,11 +142,15 @@ Abe_MCMC/
 ## Results
 
 - **Excel summaries**: All tables (Tables 1–4) are saved in `outputs/excel/` (e.g., `abe_replication.xlsx`, `abe_extension.xlsx`, `x_comparison_four_models.xlsx`).
-- **Pickled MCMC draws**: Saved in `outputs/pickles/` (e.g., `abe_bi_m1.pkl`, `ext_bi_m2.pkl`, `ext_tri_m1.pkl`) for reproducibility and further analysis.
+- **Pickled MCMC draws**: Saved in `outputs/pickles/` (e.g., `abe_bi_m1.pkl`, `ext_bi_m2.pkl`, `ext_tri_m1.pkl`) for reproducibility and further analysis. **Note:** These pickled MCMC draw files are not included in the repository by default.
 - **Figures**: All plots and figures are saved in `outputs/figures/` and subfolders:
   - `outputs/figures/abe_replication/` (Abe 2009 replication)
   - `outputs/figures/extension/` (bivariate and trivariate extensions)
   - `outputs/figures/x_comparison_four_models/` (model comparison)
+
+## Accessing Pickled MCMC Draw Files
+
+If you require the pickled MCMC draw files for your own analysis or reproduction of results, please contact the repository owner directly (see Contact section). The pickle files are stored on a cloud service and are not distributed with this repository due to their large size and storage constraints. Message the repository owner to request access to these files.
 
 ## Figures
 

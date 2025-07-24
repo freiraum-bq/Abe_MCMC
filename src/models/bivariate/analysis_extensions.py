@@ -1,9 +1,8 @@
-# ------------------------------------------------------------------
+""" ------------------------------------------------------------------
 # this script reproduces the analysis from Abe (2009) | with three customer characteristics
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------ """
 # %% 1. Import necessary libraries & set project root & custom modules & helper function
 # -- 1. Import necessary libraries & set project root & custom modules & helper function --
-# ------------------------------------------------------------------
 import sys
 import os
 # ------------------------------------------------------------------
@@ -416,6 +415,7 @@ display(table2_disp)
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table2_formatted.to_excel(writer, sheet_name="Table 2", index=False, float_format="%.2f")
 # ------------------------------------------------------------------
+
 # %% 6. Construct Table 3: Estimation Results
 # -- 6. Construct Table 3: Estimation Results --
 corr_m1 = extract_correlation(np.array(draws_m1["level_2"][0]))
@@ -485,7 +485,6 @@ with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="re
 # ------------------------------------------------------------------
 # %% 7. Construct Table 4: Customer-Level Statistics
 # -- 7. Construct Table 4: Customer-Level Statistics --
-# -------------------------------------------------------------------
 # Generate posterior predictive draws for validation period
 xstar_m1_draws = draw_future_transactions(cbs, draws_m1, T_star=t_star, seed=42)
 xstar_m2_draws = draw_future_transactions(cbs, draws_m2, T_star=t_star, seed=42)
@@ -498,6 +497,7 @@ display(table4)
 with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
     table4.to_excel(writer, sheet_name="Table 4")
 # -------------------------------------------------------------------
+
 # %% 8. Figures 2–5: Reproduce Abe (2009) plots
 # -- 8. Figures 2–5: Reproduce Abe (2009) plots --
 # -------------------------------------------------------------------
@@ -645,6 +645,7 @@ plt.savefig(os.path.join(figure_path, "Figure5_bi_corr_histogram.png"),
             dpi=300, bbox_inches="tight")
 plt.show()
 # -------------------------------------------------------------------
+
 # %% 9. Additional visualizations and diagnostics 
 # -- 9. Additional visualizations and diagnostics --
 # -------------------------------------------------------------------

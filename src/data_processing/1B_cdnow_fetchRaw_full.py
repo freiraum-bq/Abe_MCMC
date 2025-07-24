@@ -1,3 +1,6 @@
+"""
+This script fetches extendet dataset and saves it locally
+"""
 # %% 1. Import libraries & set up project root
 # -- 1. Import libraries & set up project root --
 import requests, io

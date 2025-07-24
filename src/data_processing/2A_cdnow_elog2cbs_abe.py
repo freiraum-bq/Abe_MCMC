@@ -1,3 +1,7 @@
+"""
+This script converts the data fromat from elog to CBS, matches and
+merges additional cutstomer characteristics to the OG Abe dataset from R
+"""
 # %% 1. Import libraries & set up project root
 # -- 1. Import libraries & set up project root --
 import os
@@ -59,4 +63,3 @@ os.makedirs(processed_dir, exist_ok=True)
 output_path = os.path.join(processed_dir, "cdnow_abeCBS.csv")
 cbs.to_csv(output_path, index=False)
 print(f"Saved CBS data to {output_path}")
-# %%

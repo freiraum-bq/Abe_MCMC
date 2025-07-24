@@ -1,9 +1,8 @@
-# --------------------------------------------------------
+""" --------------------------------------------------------
 # --- This script runs the MCMC with three covariables ---
-# --------------------------------------------------------
+--------- and additional customer characteristics ---------"""
 # %% 1. Import necessary libraries & set project root & custom modules
 # -- 1. Import necessary libraries & set project root & custom modules
-# ------------------------------------------------------------------
 import sys
 import os
 
@@ -38,7 +37,6 @@ from src.models.bivariate.mcmc import (
 # %% 2. Load preprocessed CBS dataset & set directories
 # -- 2. Load preprocessed CBS dataset & set directories
 
-# UPDATE WHEN WE RUN ON FULL DATASET
 # We use the processed CBS created by the 2A pipeline
 cbs_path = os.path.join(project_root, "data", "processed", "cdnow_abeCBS.csv")
 cbs = pd.read_csv(cbs_path, dtype={"cust": str}, parse_dates=["first"])
@@ -128,4 +126,3 @@ for model_name, runtime in [
 df_runs.to_csv(csv_path, index=False)
 print(f"Saved runtimes to {csv_path}")
 # ------------------------------------------------------------------
-

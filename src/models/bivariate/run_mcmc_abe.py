@@ -1,9 +1,8 @@
-# --------------------------------------------------------
+""" --------------------------------------------------------
 # --- This script runs the MCMC to reproduce Abe 2009 ---
-# --------------------------------------------------------
+# -------------------------------------------------------- """
 # %% 1. Import necessary libraries & set project root & custom modules
 # -- 1. Import necessary libraries & set project root & custom modules
-# ------------------------------------------------------------------
 import sys
 import os
 
@@ -127,4 +126,3 @@ for model_name, runtime in [
 df_runs.to_csv(csv_path, index=False)
 print(f"Saved runtimes to {csv_path}")
 # ------------------------------------------------------------------
-
