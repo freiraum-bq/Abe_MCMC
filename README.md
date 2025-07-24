@@ -152,23 +152,6 @@ Scripts can be easily run in an interactive window; sometimes restart of VS Code
 
 If you require the pickled MCMC draw files for your own analysis or reproduction of results, please contact the repository owner directly (see Contact section). The pickle files are stored on a cloud service and are not distributed with this repository due to their large size and storage constraints. Message the repository owner to request access to these files.
 
-## Figures
-
-- **Figure 2**: Weekly Time-Series Tracking for CDNOW Data
-- **Figure 3**: Conditional Expectation of Future Transactions
-- **Figure 4**: Scatter Plot of Posterior Means of λ and μ
-- **Figure 5**: Distribution of log(λ)–log(μ) Correlations
-- **Scatter M1 vs. M2**: Actual vs. Predicted x_star (M1 vs. M2)
-- **Alive vs. Churned**: Predicted Alive vs. Churned Customers
-- **Trivariate/Extension plots**: See `outputs/figures/extension/` for additional figures from the extended models.
-- **Model comparison**: See `outputs/figures/x_comparison_four_models/` for comparison plots and diagnostics.
-
-## Troubleshooting & Debugging
-
-- **Figure issues:** If a figure does not display as expected, check the debug print statements in the analysis scripts. These will show the first few values and lengths of the arrays being plotted, as well as the file paths of the data being loaded.
-- **Parameter mismatch errors:** If you get a ValueError about shape mismatch in summary tables, ensure your covariate list matches the model used to generate the MCMC draws.
-- **Data file selection:** Always confirm the correct CBS and event log files are loaded for your intended analysis (see debug prints).
-
 ## Contact
 
-For questions or contributions, please open an issue or submit a pull request.  
+Email: Jannik.J.Schneider@stud.leuphana.de
