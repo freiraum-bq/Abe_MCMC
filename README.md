@@ -41,7 +41,7 @@ Abe_MCMC/
 │   │       ├── analysis_display_helper.py # Helper display function
 │   │       ├── analysis_tri_helpers.py    # Functions for analysis
 │   │       └── elog2cbs2param.py          # Converting Elog to CBS
-│   ├── full_analysis.ipynb   # Analysis for four models (Extension) (based on full_analysis.py)
+│   ├── full_analysis.ipynb   # Archived analysis for four models (Extension) (based on full_analysis.py)
 │   └── full_analysis.py      # Analysis for four models (Extension)
 └── README.md                 
 ```
